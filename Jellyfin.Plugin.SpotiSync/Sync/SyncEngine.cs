@@ -251,7 +251,28 @@ public sealed class SyncEngine : IDisposable
 
         if (catalogDirty)
         {
-            await _store.SaveCatalogAsync(catalog, ct).ConfigureAwait(false);
+            await _store.Gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                // The dashboard may have toggled playlists while we ran: keep the user's choices.
+                var disk = await _store.LoadCatalogAsync(ct).ConfigureAwait(false);
+                foreach (var d in disk.Playlists)
+                {
+                    var mine = catalog.Playlists.Find(p => p.Id == d.Id);
+                    if (mine is not null)
+                    {
+                        mine.Enabled = d.Enabled;
+                        mine.Mode = d.Mode;
+                    }
+                }
+
+                await _store.SaveCatalogAsync(catalog, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _store.Gate.Release();
+            }
+
             outcome.StateWrites++;
         }
 
