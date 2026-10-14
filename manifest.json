@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Sync public Spotify playlists by link and import Spotify data exports. No Spotify Premium needed.",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/Arkaizn/Spotify-to-jellyfin-plugin/releases/download/v1.1.0/spotisync_1.1.0.0.zip",
+        "checksum": "0771079bd42d9cc94e27c3e85a0e4911",
+        "timestamp": "2026-10-14T09:31:58Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "First release of SpotiSync for Jellyfin 12.2.",
         "targetAbi": "12.2.0.0",
