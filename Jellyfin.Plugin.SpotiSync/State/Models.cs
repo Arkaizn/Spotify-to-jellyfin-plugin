@@ -108,8 +108,23 @@ public sealed class CatalogEntry
     /// <summary>Id used for Liked Songs.</summary>
     public const string LikedId = "liked";
 
-    /// <summary>Gets or sets the Spotify playlist id.</summary>
+    /// <summary>Source value for playlists read from their public Spotify page (no account needed).</summary>
+    public const string SourcePublic = "public";
+
+    /// <summary>Source value for playlists imported from a Spotify data export file.</summary>
+    public const string SourceFile = "file";
+
+    /// <summary>Gets or sets the Spotify playlist id ("pub-..." / "file-..." for the sources above).</summary>
     public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets where the playlist comes from: null = Spotify account, or <see cref="SourcePublic"/> / <see cref="SourceFile"/>.</summary>
+    public string? Source { get; set; }
+
+    /// <summary>Gets or sets the Spotify playlist id behind a public link.</summary>
+    public string? SpotifyId { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether Spotify only returned part of the playlist (public pages stop at 100 songs).</summary>
+    public bool Capped { get; set; }
 
     /// <summary>Gets or sets the name.</summary>
     public string Name { get; set; } = string.Empty;

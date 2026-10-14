@@ -18,6 +18,9 @@ namespace Jellyfin.Plugin.SpotiSync.State;
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.PlaylistPatch))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.OverrideRequest))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.SyncRequest))]
+[JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.AddPublicRequest))]
+[JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.ImportResultDto))]
+[JsonSerializable(typeof(CatalogEntry))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.LoginDto))]
 [JsonSerializable(typeof(List<Jellyfin.Plugin.SpotiSync.Api.SearchResultDto>))]
 public sealed partial class StateJsonContext : JsonSerializerContext

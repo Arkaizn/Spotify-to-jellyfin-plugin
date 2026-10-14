@@ -188,12 +188,14 @@ internal sealed class Harness : IDisposable
     {
         Dir = Directory.CreateTempSubdirectory("spotisync-test-").FullName;
         Store = new StateStore(Dir);
-        Engine = new SyncEngine(Spotify, Library, Target, Store, Cache, () => Settings, NullLogger.Instance);
+        Engine = new SyncEngine(Spotify, Library, Target, Store, Cache, () => Settings, NullLogger.Instance, Public);
     }
 
     public string Dir { get; }
 
     public FakeSpotify Spotify { get; } = new();
+
+    public FakePublic Public { get; } = new();
 
     public FakeLibrary Library { get; } = new();
 
@@ -249,5 +251,18 @@ internal sealed class Harness : IDisposable
         catch (IOException)
         {
         }
+    }
+}
+
+internal sealed class FakePublic : IPublicPlaylistSource
+{
+    public Dictionary<string, PublicPlaylist> Lists { get; } = [];
+
+    public int Calls;
+
+    public Task<PublicPlaylist> GetAsync(string spotifyId, CancellationToken ct)
+    {
+        Calls++;
+        return Lists.TryGetValue(spotifyId, out var p) ? Task.FromResult(p) : throw new SpotifyApiException(404, "Playlist not found. Is it public?");
     }
 }

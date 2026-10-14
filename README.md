@@ -23,6 +23,22 @@ Requires **Jellyfin 12.2** (the plugin targets .NET 10 / ABI 12.2.0.0).
 2. Open **Catalog**, find **SpotiSync**, install it and restart Jellyfin.
 3. **SpotiSync** now appears in the dashboard sidebar under *Plugins*.
 
+## No Premium? Use public links or your data export
+
+Since 2026 Spotify only lets self-made apps work when the app owner has Premium. Without it you
+can still sync, without connecting an account at all:
+
+- **Public playlist link:** make the playlist public in Spotify (you can keep editing it on your
+  phone), copy its link (Share → Copy link), paste it into **Add playlist** on the SpotiSync page.
+  It is re-read on every sync. Limit: Spotify's public page shows only the **first 100 songs**.
+- **Import Spotify data:** in Spotify go to Account → Privacy → *Download your data*. When the
+  e-mail arrives (it can take a few days), unzip it and upload `Playlist1.json` (and
+  `Playlist2.json`, …, plus `YourLibrary.json` for liked songs) with **Import Spotify data**.
+  No song limit, but updates need a new export.
+
+Both kinds of playlists get the same matching, overrides and missing lists. The × next to them
+removes them from SpotiSync (the Jellyfin playlist stays).
+
 ## Spotify app setup
 
 SpotiSync logs in with your own Spotify app (Authorization Code + PKCE, so no client secret
