@@ -36,6 +36,19 @@ can still sync, without connecting an account at all:
   `Playlist2.json`, …, plus `YourLibrary.json` for liked songs) with **Import Spotify data**.
   No song limit, but updates need a new export.
 
+**More than 100 songs without Premium:** open a playlist on the SpotiSync page and set
+*Jellyfin playlist* to the same name on several Spotify playlists. They are combined into that one
+Jellyfin playlist, in name order ("Rock 2" before "Rock 10"):
+
+- *Parts:* keep "Rock 1", "Rock 2", … (up to 100 songs each) public on Spotify, all with Jellyfin
+  playlist "Rock", in *Mirror* mode. Jellyfin's "Rock" mirrors all parts.
+- *Inbox:* a small public "Rock inbox" playlist in *Add only* mode with Jellyfin playlist "Rock".
+  Add new songs to the inbox on your phone; once synced you can remove them from the inbox again,
+  Jellyfin keeps them. Seed the big playlist once with **Import Spotify data** (also targeting "Rock").
+
+If one part can't be read during a sync, the combined playlist only gains songs that time, it
+never loses any.
+
 Both kinds of playlists get the same matching, overrides and missing lists. The × next to them
 removes them from SpotiSync (the Jellyfin playlist stays).
 

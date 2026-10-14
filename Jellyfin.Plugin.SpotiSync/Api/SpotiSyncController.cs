@@ -222,6 +222,18 @@ public class SpotiSyncController : ControllerBase
             {
                 e.Mode = SyncModes.Normalize(patch.Mode);
             }
+
+            if (patch.Target is not null)
+            {
+                var t = patch.Target.Trim();
+                var target = t.Length == 0 ? null : t;
+                if (!string.Equals(target, e.Target, StringComparison.Ordinal))
+                {
+                    e.Target = target;
+                    e.JfId = null; // resolve the new destination on the next sync
+                    e.Written = null;
+                }
+            }
         }).ConfigureAwait(false);
         return found ? NoContent() : NotFound();
     }

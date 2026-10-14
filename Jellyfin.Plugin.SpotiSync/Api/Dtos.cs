@@ -63,6 +63,9 @@ public sealed class PlaylistPatch
     public bool? Enabled { get; set; }
 
     public string? Mode { get; set; }
+
+    /// <summary>Gets or sets the Jellyfin playlist to merge into ("" = own playlist).</summary>
+    public string? Target { get; set; }
 }
 
 /// <summary>Override actions: "pick" (with item), "ignore", "clear", "accept" (take the suggestion).</summary>
