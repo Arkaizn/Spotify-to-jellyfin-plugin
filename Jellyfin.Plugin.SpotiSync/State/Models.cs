@@ -153,6 +153,12 @@ public sealed class CatalogEntry
     /// <summary>Gets or sets the mode (<see cref="SyncModes"/>).</summary>
     public string Mode { get; set; } = SyncModes.Mirror;
 
+    /// <summary>
+    /// Gets or sets the name of the Jellyfin playlist to write into, when several Spotify playlists
+    /// should end up in one (e.g. "Rock 1" + "Rock 2" -> "Rock"). Null = own playlist named like the Spotify one.
+    /// </summary>
+    public string? Target { get; set; }
+
     /// <summary>Gets or sets the Jellyfin playlist id this syncs into.</summary>
     public Guid? JfId { get; set; }
 

@@ -120,6 +120,11 @@
     <select id="ssDMode" class="ss-in" style="width:auto"><option value="mirror">Mirror (order + removals)</option><option value="add">Add only</option></select>
     <label class="ss-sw" title="Sync this playlist"><input type="checkbox" id="ssDOn"><span></span></label>
   </div>
+  <form class="ss-add" id="ssTargetForm" style="margin-bottom:.2em">
+    <input id="ssTarget" class="ss-in" placeholder="Jellyfin playlist (empty = same name as on Spotify)" autocomplete="off">
+    <button type="submit" class="ss-btn">Save</button>
+  </form>
+  <div class="ss-hint">Give several Spotify playlists the same Jellyfin playlist name to combine them, e.g. &ldquo;Rock 1&rdquo; + &ldquo;Rock 2&rdquo; &rarr; &ldquo;Rock&rdquo; (gets past the 100-song limit of public links). In <i>Add only</i> mode Jellyfin keeps every song it has seen, so you can clear old songs out of a small Spotify &ldquo;inbox&rdquo; playlist.</div>
   <div class="ss-tools">
     <button type="button" class="ss-btn" id="ssAcceptAll">Accept all suggestions</button>
     <button type="button" class="ss-btn" id="ssMissing">Copy missing links</button>
@@ -299,12 +304,13 @@ function renderList() {
         (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + (e.matched || 0) + ' in Jellyfin' : '') +
         (e.lastSync ? ' &middot; synced ' + esc(new Date(e.lastSync).toLocaleString()) : '')
       : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on. Add it by its public link instead.';
+    var tgt = e.target ? '<span class="ss-src" title="Combined into this Jellyfin playlist">&rarr; ' + esc(e.target) + '</span>' : '';
     var src = e.source === 'public' ? '<span class="ss-src">public link</span>' : e.source === 'file' ? '<span class="ss-src">imported</span>' : '';
     var rm = e.source ? ' <button type="button" class="ss-x" data-rm="1" title="Remove from SpotiSync (the Jellyfin playlist stays)">&times;</button>' : '';
     var cap = e.capped ? '<div class="ss-sub" style="color:var(--ss-warn)">Spotify shows only the first 100 songs of public playlists. Import your Spotify data for the rest.</div>' : '';
     return '<div data-id="' + esc(e.id) + '" class="' + (readable ? '' : 'ss-dis') + '">' +
       (e.image ? '<img loading="lazy" alt="" src="' + esc(e.image) + '">' : '<div class="ss-cov"></div>') +
-      '<div style="min-width:0"><div class="ss-name"><span data-open="1">' + esc(e.name) + '</span>' + src + rm + '</div><div class="ss-sub">' + sub + '</div>' + cap +
+      '<div style="min-width:0"><div class="ss-name"><span data-open="1">' + esc(e.name) + '</span>' + src + tgt + rm + '</div><div class="ss-sub">' + sub + '</div>' + cap +
       (e.error ? '<div class="ss-sub ss-err">' + esc(e.error) + '</div>' : '') + '</div>' +
       bar(e) +
       '<select data-mode="1"' + (readable ? '' : ' disabled') + '><option value="mirror"' + (e.mode !== 'add' ? ' selected' : '') + '>Mirror</option><option value="add"' + (e.mode === 'add' ? ' selected' : '') + '>Add only</option></select>' +
@@ -317,7 +323,7 @@ function patchPlaylist(id, body) {
   return post('Playlists/' + encodeURIComponent(id), body).then(function () {
     var e = entry(id);
     if (e) { if (body.enabled != null) { e.enabled = body.enabled; } if (body.mode) { e.mode = body.mode; } }
-    toast(body.enabled === true ? 'Will be synced on the next run' : 'Saved');
+    if (body.target == null) { toast(body.enabled === true ? 'Will be synced on the next run' : 'Saved'); }
   }, fail);
 }
 
@@ -330,6 +336,7 @@ function openDetail(id) {
   Q('#ssDMode').value = e && e.mode === 'add' ? 'add' : 'mirror';
   Q('#ssDOn').checked = !!(e && e.enabled);
   Q('#ssTFilter').value = '';
+  Q('#ssTarget').value = (e && e.target) || '';
   show('det');
   rows = []; drawRows(true);
   loadDetail(id, false);
@@ -521,6 +528,14 @@ Q('#ssImport').addEventListener('change', function (ev) {
   }, Promise.resolve()).then(function () {
     if (names) { toast('Imported ' + names + ' playlists (' + total + ' songs). Switch on the ones to sync.'); }
     delete cache.Playlists; refreshData(); renderNotice(); startPolling(8000);
+  });
+});
+Q('#ssTargetForm').addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var t = Q('#ssTarget').value.trim();
+  patchPlaylist(detailId, { target: t }).then(function () {
+    var e = entry(detailId); if (e) { e.target = t || null; }
+    toast(t ? 'Will be combined into \u201c' + t + '\u201d on the next sync' : 'Uses its own Jellyfin playlist again');
   });
 });
 Q('#ssBack').addEventListener('click', function () { show('pl'); renderList(); });
