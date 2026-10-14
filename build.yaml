@@ -1,0 +1,18 @@
+---
+name: "SpotiSync"
+guid: "c3789a51-d16f-4d05-9f4f-8baf5990764b"
+version: "1.0.0.0"
+targetAbi: "12.2.0.0"
+framework: "net10.0"
+overview: "Sync your Spotify playlists into Jellyfin playlists"
+description: >
+  Matches the songs of your Spotify playlists and Liked Songs against your
+  Jellyfin music library and keeps Jellyfin playlists in sync (mirror or
+  add-only). Manual overrides, missing-song lists, scheduled task. Light on
+  resources: no background work between syncs.
+category: "General"
+owner: "Arkaizn"
+artifacts:
+  - "Jellyfin.Plugin.SpotiSync.dll"
+changelog: >
+  First release.

@@ -1,0 +1,12 @@
+[
+  {
+    "guid": "c3789a51-d16f-4d05-9f4f-8baf5990764b",
+    "name": "SpotiSync",
+    "description": "Matches the songs of your Spotify playlists and Liked Songs against your Jellyfin music library and keeps Jellyfin playlists in sync (mirror or add-only). Manual overrides, missing-song lists, scheduled task. Light on resources: no background work between syncs.",
+    "overview": "Sync your Spotify playlists into Jellyfin playlists",
+    "owner": "Arkaizn",
+    "category": "General",
+    "imageUrl": "",
+    "versions": []
+  }
+]

@@ -1,0 +1,541 @@
+<div id="SpotiSyncPage" data-role="page" class="page type-interior pluginConfigurationPage spotisync" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+<style>
+.spotisync{--ss-fg:var(--jf-palette-text-primary,inherit);--ss-mut:var(--jf-palette-text-secondary,rgba(128,128,128,.95));--ss-paper:var(--jf-palette-background-paper,rgba(128,128,128,.08));--ss-div:var(--jf-palette-divider,rgba(128,128,128,.25));--ss-acc:var(--jf-palette-primary-main,#00a4dc);--ss-ok:#43a047;--ss-warn:#fb8c00;--ss-err:#e53935;--ss-ign:rgba(128,128,128,.55)}
+.spotisync .hide{display:none!important}
+.ss-head{display:flex;flex-wrap:wrap;align-items:center;gap:.6em 1em;margin:.5em 0 1em}
+.ss-head h2{margin:0;flex:0 0 auto}
+.ss-head .ss-actions{margin-left:auto;display:flex;gap:.5em;flex-wrap:wrap}
+.ss-head .ss-actions button{margin:0}
+.ss-pill{font-size:.85em;padding:.25em .7em;border-radius:1em;background:var(--ss-paper);color:var(--ss-mut)}
+.ss-pill.ok{color:var(--ss-ok)}
+.ss-pill.err{color:var(--ss-err)}
+.ss-run{display:flex;align-items:center;gap:.8em;margin:0 0 1em;font-size:.9em;color:var(--ss-mut)}
+.ss-run .ss-bar{flex:1;height:6px}
+.ss-bar{background:var(--ss-div);border-radius:3px;overflow:hidden;display:flex;height:8px}
+.ss-bar i{display:block;height:100%;background:var(--ss-acc);transition:width .3s}
+.ss-bar .m{background:var(--ss-ok)}.ss-bar .r{background:var(--ss-warn)}.ss-bar .x{background:var(--ss-err)}.ss-bar .g{background:var(--ss-ign)}
+.ss-note{padding:.8em 1em;border-radius:6px;background:var(--ss-paper);border-left:4px solid var(--ss-warn);margin:0 0 1em}
+.ss-tabs{display:flex;gap:.2em;border-bottom:1px solid var(--ss-div);margin:0 0 1em;overflow-x:auto;scrollbar-width:none}
+.ss-tabs button{background:none;border:0;color:var(--ss-mut);padding:.7em 1em;font:inherit;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.ss-tabs button.on{color:var(--ss-fg);border-bottom-color:var(--ss-acc)}
+.ss-tabs b{font-weight:normal;opacity:.7;margin-left:.3em}
+.ss-tools{display:flex;gap:1em;align-items:center;flex-wrap:wrap;margin:0 0 .8em}
+.ss-tools .ss-grow{flex:1}
+.ss-in{background:var(--ss-paper);color:var(--ss-fg);border:1px solid var(--ss-div);border-radius:4px;padding:.55em .7em;font:inherit;min-width:0;width:100%;box-sizing:border-box}
+.ss-link{color:var(--ss-acc);cursor:pointer;background:none;border:0;font:inherit;padding:0;text-decoration:none}
+.ss-list>div{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(90px,200px) auto auto;gap:.4em 1em;align-items:center;padding:.6em .4em;border-bottom:1px solid var(--ss-div)}
+.ss-list img,.ss-list .ss-cov{width:44px;height:44px;border-radius:4px;object-fit:cover;background:var(--ss-paper)}
+.ss-list .ss-name{font-weight:500;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-list .ss-sub{font-size:.82em;color:var(--ss-mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-list .ss-dis{opacity:.5}
+.ss-list .ss-dis .ss-name{cursor:default}
+.ss-list .ss-err{color:var(--ss-err)}
+.ss-list select{background:var(--ss-paper);color:var(--ss-fg);border:1px solid var(--ss-div);border-radius:4px;padding:.3em}
+.ss-sw{position:relative;width:38px;height:22px;display:inline-block}
+.ss-sw input{opacity:0;width:0;height:0}
+.ss-sw span{position:absolute;inset:0;border-radius:11px;background:var(--ss-div);cursor:pointer;transition:.2s}
+.ss-sw span:before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.2s}
+.ss-sw input:checked+span{background:var(--ss-acc)}
+.ss-sw input:checked+span:before{transform:translateX(16px)}
+.ss-sw input:disabled+span{opacity:.4;cursor:not-allowed}
+.ss-dh{display:flex;align-items:center;gap:.8em;flex-wrap:wrap;margin:0 0 .6em}
+.ss-dh h3{margin:0;flex:1;min-width:10em}
+.ss-vp{height:62vh;min-height:260px;overflow-y:auto;position:relative;border-top:1px solid var(--ss-div);contain:strict}
+.ss-row{position:absolute;left:0;right:0;height:56px;display:grid;grid-template-columns:3em minmax(0,1fr) minmax(0,1fr) 15.5em;gap:1em;align-items:center;padding:0 .4em;border-bottom:1px solid var(--ss-div);box-sizing:border-box}
+.ss-row .t{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ss-row .s{font-size:.8em;color:var(--ss-mut);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ss-row .n{color:var(--ss-mut);font-size:.85em;text-align:right}
+.ss-row .a{display:flex;gap:.3em;justify-content:flex-end}
+.ss-row .a button,.ss-btn{background:var(--ss-paper);color:var(--ss-fg);border:1px solid var(--ss-div);border-radius:4px;padding:.35em .6em;font:inherit;font-size:.82em;cursor:pointer;white-space:nowrap}
+.ss-row .a button:hover,.ss-btn:hover{border-color:var(--ss-acc)}
+.ss-empty{padding:2em;text-align:center;color:var(--ss-mut)}
+.ss-form{max-width:44em}
+.ss-form label{display:block;margin:1.1em 0 .35em;font-weight:500}
+.ss-form .fd{font-size:.85em;color:var(--ss-mut);margin-top:.3em}
+.ss-copy{display:flex;gap:.5em}
+.ss-copy code{flex:1;background:var(--ss-paper);padding:.55em .7em;border-radius:4px;overflow-x:auto;white-space:nowrap}
+.ss-log{background:var(--ss-paper);padding:.8em;border-radius:6px;max-height:60vh;overflow:auto;font-size:.82em;line-height:1.5;white-space:pre-wrap;margin:0}
+.ss-log .warn{color:var(--ss-warn)}.ss-log .error{color:var(--ss-err)}
+.ss-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 1em}
+.ss-modal>div{background:var(--jf-palette-background-default,#202020);color:var(--ss-fg);border-radius:8px;width:100%;max-width:38em;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.ss-modal header{padding:1em 1em .5em}
+.ss-modal header .s{font-size:.85em;color:var(--ss-mut);margin:.3em 0 .7em}
+.ss-res{overflow-y:auto;padding:0 .5em .5em}
+.ss-res button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--ss-div);color:var(--ss-fg);padding:.6em .5em;font:inherit;cursor:pointer}
+.ss-res button:hover,.ss-res button:focus{background:var(--ss-paper)}
+.ss-res .s{font-size:.8em;color:var(--ss-mut)}
+.ss-modal footer{padding:.6em 1em;text-align:right;border-top:1px solid var(--ss-div)}
+.ss-toast{position:fixed;bottom:1.5em;left:50%;transform:translateX(-50%);background:#323232;color:#fff;padding:.7em 1.2em;border-radius:4px;z-index:1200;max-width:90vw}
+@media (max-width:640px){
+.ss-list>div{grid-template-columns:40px minmax(0,1fr) auto;grid-template-areas:"c n t" "c b m"}
+.ss-list>div>:nth-child(1){grid-area:c}.ss-list>div>:nth-child(2){grid-area:n}.ss-list>div>:nth-child(3){grid-area:b}.ss-list>div>:nth-child(4){grid-area:m}.ss-list>div>:nth-child(5){grid-area:t}
+.ss-tools .ss-grow{flex-basis:100%}
+.ss-row{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:104px;gap:.15em;padding:.35em .4em;align-content:center}
+.ss-row .n{display:none}
+.ss-row .a{justify-content:flex-start}
+}
+</style>
+<div data-role="content"><div class="content-primary">
+<div class="ss-head">
+  <h2 class="sectionTitle">SpotiSync</h2>
+  <span id="ssConn" class="ss-pill">&hellip;</span>
+  <div class="ss-actions">
+    <button is="emby-button" type="button" class="raised button-submit" id="ssSync"><span>Sync now</span></button>
+    <button is="emby-button" type="button" class="raised" id="ssRematch" title="Match the cached Spotify tracks against the library again, without contacting Spotify"><span>Rematch</span></button>
+  </div>
+</div>
+<div id="ssRun" class="ss-run hide"><div class="ss-bar"><i style="width:0"></i></div><span></span></div>
+<div id="ssNotice"></div>
+<div class="ss-tabs" id="ssMain">
+  <button type="button" data-v="pl" class="on">Playlists</button>
+  <button type="button" data-v="set">Settings</button>
+  <button type="button" data-v="log">Log</button>
+</div>
+
+<section id="ssPl">
+  <div class="ss-tools">
+    <input id="ssFilter" class="ss-in ss-grow" type="search" placeholder="Filter playlists" autocomplete="off">
+    <label><input type="checkbox" id="ssOnlyOn"> Only synced</label>
+    <button type="button" class="ss-link" id="ssAllMissing">Copy all missing links</button>
+  </div>
+  <div id="ssList" class="ss-list"></div>
+</section>
+
+<section id="ssDet" class="hide">
+  <div class="ss-dh">
+    <button type="button" class="ss-btn" id="ssBack">&larr; Playlists</button>
+    <h3 id="ssDName"></h3>
+    <select id="ssDMode" class="ss-in" style="width:auto"><option value="mirror">Mirror (order + removals)</option><option value="add">Add only</option></select>
+    <label class="ss-sw" title="Sync this playlist"><input type="checkbox" id="ssDOn"><span></span></label>
+  </div>
+  <div class="ss-tools">
+    <button type="button" class="ss-btn" id="ssAcceptAll">Accept all suggestions</button>
+    <button type="button" class="ss-btn" id="ssMissing">Copy missing links</button>
+    <span class="ss-grow"></span>
+    <input id="ssTFilter" class="ss-in" style="max-width:16em" type="search" placeholder="Filter songs" autocomplete="off">
+  </div>
+  <div class="ss-tabs" id="ssTTabs">
+    <button type="button" data-t="1" class="on">In Jellyfin<b></b></button>
+    <button type="button" data-t="2">Need a look<b></b></button>
+    <button type="button" data-t="3">Not found<b></b></button>
+    <button type="button" data-t="4">Ignored<b></b></button>
+  </div>
+  <div class="ss-vp" id="ssVp"><div id="ssSpacer"></div></div>
+</section>
+
+<section id="ssSet" class="hide">
+  <form class="ss-form" id="ssForm">
+    <label for="ssClient">Spotify client ID</label>
+    <input id="ssClient" class="ss-in" autocomplete="off" spellcheck="false">
+    <div class="fd">Create an app at developer.spotify.com/dashboard (Web API). PKCE is used, no client secret is needed or stored.</div>
+    <label>Redirect URI</label>
+    <div class="ss-copy"><code id="ssRedirect"></code><button type="button" class="ss-btn" id="ssCopyRedirect">Copy</button></div>
+    <div class="fd">Add exactly this URI to your Spotify app's Redirect URIs. Spotify accepts https URLs, or http only for loopback addresses (127.0.0.1).</div>
+    <div class="fd" id="ssRedirWarn" style="color:var(--ss-warn)"></div>
+    <label for="ssPublic">Public Jellyfin URL (optional)</label>
+    <input id="ssPublic" class="ss-in" placeholder="https://jellyfin.example.com" autocomplete="off" spellcheck="false">
+    <div class="fd">Leave empty to use the address you opened this page with.</div>
+    <label for="ssOwner">Playlists belong to</label>
+    <select id="ssOwner" class="ss-in"></select>
+    <label for="ssMode">Mode for new playlists</label>
+    <select id="ssMode" class="ss-in"><option value="mirror">Mirror (Spotify order, removes songs that left)</option><option value="add">Add only (never removes or reorders)</option></select>
+    <label for="ssPrefix">Jellyfin playlist name prefix (optional)</label>
+    <input id="ssPrefix" class="ss-in" autocomplete="off">
+    <div class="fd">An existing Jellyfin playlist with the same name is taken over.</div>
+    <div style="margin-top:1.5em;display:flex;gap:.6em;flex-wrap:wrap">
+      <button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button>
+      <button is="emby-button" type="button" class="raised" id="ssLogin"><span>Connect Spotify</span></button>
+      <button is="emby-button" type="button" class="raised hide" id="ssLogout"><span>Disconnect</span></button>
+    </div>
+    <div class="fd" style="margin-top:1em">Automatic syncs: Dashboard &rarr; Scheduled Tasks &rarr; &ldquo;SpotiSync: sync playlists&rdquo; (default every 6 hours).</div>
+  </form>
+</section>
+
+<section id="ssLog" class="hide"><pre class="ss-log" id="ssLogText"></pre></section>
+</div></div>
+
+<div id="ssFind" class="ss-modal hide" role="dialog" aria-modal="true"><div>
+  <header><b>Find in library</b><div class="s" id="ssFindFor"></div>
+  <input id="ssFindQ" class="ss-in" type="search" placeholder="Title or artist" autocomplete="off"></header>
+  <div class="ss-res" id="ssFindRes"></div>
+  <footer><button type="button" class="ss-btn" id="ssFindClose">Close</button></footer>
+</div></div>
+
+<script>
+(function () {
+'use strict';
+var page = document.querySelector('#SpotiSyncPage');
+var Q = function (s) { return page.querySelector(s); };
+var ST = { P: 0, M: 1, R: 2, X: 3, I: 4 };
+var etags = {}, cache = {};
+var settings = null, catalog = null, detail = null, detailId = null, tab = 1, rows = [];
+var visible = false, pollTimer = null, expectUntil = 0, wasRunning = false, logSeq = 0, logLines = [];
+var ROW = 56;
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+function url(p) { return ApiClient.getUrl('SpotiSync/' + p); }
+function toast(msg) {
+  var t = document.createElement('div'); t.className = 'ss-toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3500);
+}
+function fail(e) {
+  if (e && typeof e.text === 'function') { e.text().then(function (t) { toast('Error: ' + (t || e.status)); }); } else { toast('Error: ' + (e && e.message || e)); }
+}
+
+// GET with ETag: unchanged resources come back as 304 and are served from memory.
+function getJson(p) {
+  var h = {};
+  if (etags[p] && cache[p]) { h['If-None-Match'] = etags[p]; }
+  return ApiClient.fetch({ url: url(p), type: 'GET', headers: h }).then(function (r) {
+    if (r.status === 304) { return cache[p]; }
+    var tag = r.headers.get('ETag');
+    return r.json().then(function (j) { if (tag) { etags[p] = tag; cache[p] = j; } return j; });
+  });
+}
+function post(p, body) {
+  return ApiClient.fetch({ url: url(p), type: 'POST', data: JSON.stringify(body || {}), contentType: 'application/json' });
+}
+function copy(text, what) {
+  function done() { toast(what + ' copied'); }
+  function fallback() {
+    var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed'); }
+    ta.remove();
+  }
+  if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(done, fallback); } else { fallback(); }
+}
+
+// ---------------------------------------------------------------- status polling
+// Polls only while a run is active (or was just requested) and the tab is visible.
+function poll() {
+  pollTimer = null;
+  if (!visible || document.visibilityState !== 'visible') { return; }
+  ApiClient.fetch({ url: url('Status?since=' + logSeq), type: 'GET', dataType: 'json' }).then(function (s) {
+    renderStatus(s);
+    if (visible && (s.running || Date.now() < expectUntil)) {
+      pollTimer = setTimeout(poll, s.running ? 1500 : 1000);
+    }
+  }, function () { pollTimer = null; });
+}
+function startPolling(expectMs) {
+  if (expectMs) { expectUntil = Date.now() + expectMs; }
+  if (!pollTimer) { poll(); }
+}
+function renderStatus(s) {
+  var run = Q('#ssRun');
+  if (s.log && s.log.length) {
+    logLines = logLines.concat(s.log).slice(-200);
+    logSeq = s.logSeq;
+    Q('#ssLogText').innerHTML = logLines.slice().reverse().map(function (l) {
+      return '<span class="' + esc(l.level) + '">' + esc(new Date(l.time).toLocaleTimeString()) + '  ' + esc(l.text) + '</span>';
+    }).join('\n');
+  }
+  if (s.running) {
+    run.classList.remove('hide');
+    run.querySelector('i').style.width = (s.progress || 0) + '%';
+    run.querySelector('span').textContent = (s.mode === 'rematch' ? 'Rematching' : 'Syncing') + (s.current ? ': ' + s.current : '') + ' ' + Math.round(s.progress || 0) + '%';
+    expectUntil = 0;
+  } else {
+    run.classList.add('hide');
+    if (wasRunning) { refreshData(); }
+  }
+  Q('#ssSync').disabled = Q('#ssRematch').disabled = !!s.running;
+  wasRunning = !!s.running;
+}
+
+// ---------------------------------------------------------------- data
+function refreshData() {
+  return getJson('Playlists').then(function (c) {
+    catalog = c; renderList();
+    if (detailId) { return loadDetail(detailId, true); }
+  }, fail);
+}
+function loadSettings() {
+  return getJson('Settings').then(function (s) { settings = s; renderSettings(); renderNotice(); }, fail);
+}
+function renderNotice() {
+  var n = [], s = settings || {};
+  if (!s.clientId) { n.push('Enter your Spotify client ID under Settings.'); }
+  else if (!s.connected) { n.push('Spotify is not connected. Use &ldquo;Connect Spotify&rdquo; under Settings.'); }
+  if (!s.ownerUserId || /^0{8}-/.test(s.ownerUserId)) { n.push('Choose the Jellyfin user the playlists belong to under Settings.'); }
+  if (s.rateLimitedUntil) { n.push('Spotify asked us to slow down until ' + esc(new Date(s.rateLimitedUntil).toLocaleString()) + '. Cached track lists are used until then.'); }
+  Q('#ssNotice').innerHTML = n.map(function (t) { return '<div class="ss-note">' + t + '</div>'; }).join('');
+  var c = Q('#ssConn');
+  c.className = 'ss-pill ' + (s.connected ? 'ok' : 'err');
+  c.textContent = s.connected ? 'Spotify: ' + (s.spotifyUser || 'connected') : 'Spotify: not connected';
+}
+
+// ---------------------------------------------------------------- playlist list
+function bar(e) {
+  var t = (e.matched || 0) + (e.review || 0) + (e.missing || 0) + (e.ignored || 0);
+  if (!t) { return '<div class="ss-bar"></div>'; }
+  function seg(c, n) { return n ? '<i class="' + c + '" style="width:' + (100 * n / t) + '%"></i>' : ''; }
+  return '<div class="ss-bar" title="' + (e.matched || 0) + ' in Jellyfin, ' + (e.review || 0) + ' need a look, ' + (e.missing || 0) + ' not found, ' + (e.ignored || 0) + ' ignored">' +
+    seg('m', e.matched) + seg('r', e.review) + seg('x', e.missing) + seg('g', e.ignored) + '</div>';
+}
+function renderList() {
+  var list = (catalog && catalog.playlists) || [];
+  var f = Q('#ssFilter').value.trim().toLowerCase(), only = Q('#ssOnlyOn').checked;
+  var html = list.filter(function (e) {
+    return (!only || e.enabled) && (!f || e.name.toLowerCase().indexOf(f) >= 0);
+  }).map(function (e) {
+    var readable = e.readable;
+    var sub = readable
+      ? (e.total || 0) + ' songs' + (e.ownerName ? ' &middot; ' + esc(e.ownerName) : '') + (e.collab ? ' &middot; collaborative' : '') +
+        (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + (e.matched || 0) + ' in Jellyfin' : '') +
+        (e.lastSync ? ' &middot; synced ' + esc(new Date(e.lastSync).toLocaleString()) : '')
+      : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on';
+    return '<div data-id="' + esc(e.id) + '" class="' + (readable ? '' : 'ss-dis') + '">' +
+      (e.image ? '<img loading="lazy" alt="" src="' + esc(e.image) + '">' : '<div class="ss-cov"></div>') +
+      '<div style="min-width:0"><div class="ss-name" data-open="1">' + esc(e.name) + '</div><div class="ss-sub">' + sub + '</div>' +
+      (e.error ? '<div class="ss-sub ss-err">' + esc(e.error) + '</div>' : '') + '</div>' +
+      bar(e) +
+      '<select data-mode="1"' + (readable ? '' : ' disabled') + '><option value="mirror"' + (e.mode !== 'add' ? ' selected' : '') + '>Mirror</option><option value="add"' + (e.mode === 'add' ? ' selected' : '') + '>Add only</option></select>' +
+      '<label class="ss-sw" title="' + (readable ? 'Sync this playlist' : 'Not available') + '"><input type="checkbox" data-on="1"' + (e.enabled ? ' checked' : '') + (readable ? '' : ' disabled') + '><span></span></label>' +
+      '</div>';
+  }).join('');
+  Q('#ssList').innerHTML = html || '<div class="ss-empty">' + (list.length ? 'No playlist matches the filter.' : 'No playlists yet. Connect Spotify and press &ldquo;Sync now&rdquo;.') + '</div>';
+}
+function patchPlaylist(id, body) {
+  return post('Playlists/' + encodeURIComponent(id), body).then(function () {
+    var e = entry(id);
+    if (e) { if (body.enabled != null) { e.enabled = body.enabled; } if (body.mode) { e.mode = body.mode; } }
+    toast(body.enabled === true ? 'Will be synced on the next run' : 'Saved');
+  }, fail);
+}
+
+// ---------------------------------------------------------------- playlist detail (virtualized)
+function entry(id) { return catalog && catalog.playlists && catalog.playlists.find(function (x) { return x.id === id; }); }
+function openDetail(id) {
+  detailId = id; tab = 1; detail = null;
+  var e = entry(id);
+  Q('#ssDName').textContent = e ? e.name : id;
+  Q('#ssDMode').value = e && e.mode === 'add' ? 'add' : 'mirror';
+  Q('#ssDOn').checked = !!(e && e.enabled);
+  Q('#ssTFilter').value = '';
+  show('det');
+  rows = []; drawRows(true);
+  loadDetail(id, false);
+}
+function loadDetail(id, keepScroll) {
+  return getJson('Playlists/' + encodeURIComponent(id) + '/Tracks').then(function (d) {
+    if (detailId !== id) { return; }
+    detail = d; buildRows(keepScroll);
+  }, fail);
+}
+function tabOf(t) { var s = t.st || 0; return s === ST.M ? 1 : s === ST.R ? 2 : s === ST.I ? 4 : 3; }
+function buildRows(keepScroll) {
+  var tracks = (detail && detail.tracks) || [], counts = [0, 0, 0, 0, 0];
+  var f = Q('#ssTFilter').value.trim().toLowerCase();
+  rows = [];
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i], k = tabOf(t);
+    counts[k]++;
+    if (k !== tab) { continue; }
+    if (f && (t.title + ' ' + (t.artists || []).join(' ') + ' ' + (t.text || '')).toLowerCase().indexOf(f) < 0) { continue; }
+    rows.push(i);
+  }
+  page.querySelectorAll('#ssTTabs button').forEach(function (b) {
+    b.classList.toggle('on', +b.dataset.t === tab);
+    b.querySelector('b').textContent = counts[+b.dataset.t];
+  });
+  var vp = Q('#ssVp');
+  if (!keepScroll) { vp.scrollTop = 0; }
+  ROW = window.matchMedia('(max-width:640px)').matches ? 104 : 56;
+  Q('#ssSpacer').style.height = (rows.length * ROW) + 'px';
+  drawRows(true);
+}
+var drawn = '';
+function drawRows(force) {
+  var vp = Q('#ssVp'), tracks = (detail && detail.tracks) || [];
+  if (!rows.length) {
+    vp.querySelectorAll('.ss-row,.ss-empty').forEach(function (r) { r.remove(); });
+    var em = document.createElement('div'); em.className = 'ss-empty';
+    em.textContent = detail ? 'Nothing here.' : 'Loading...';
+    vp.appendChild(em); drawn = ''; return;
+  }
+  var first = Math.max(0, Math.floor(vp.scrollTop / ROW) - 6);
+  var last = Math.min(rows.length, Math.ceil((vp.scrollTop + vp.clientHeight) / ROW) + 6);
+  var key = first + ':' + last;
+  if (!force && key === drawn) { return; }
+  drawn = key;
+  var html = '';
+  for (var r = first; r < last; r++) {
+    var i = rows[r], t = tracks[i], st = t.st || 0;
+    var sp = '<div style="min-width:0"><div class="t">' + (t.id ? '<a class="ss-link" target="_blank" rel="noopener" href="https://open.spotify.com/track/' + esc(t.id) + '">' + esc(t.title) + '</a>' : esc(t.title)) + '</div>' +
+      '<div class="s">' + esc((t.artists || []).join(', ')) + (t.album ? ' &middot; ' + esc(t.album) : '') + '</div></div>';
+    var jf = '<div style="min-width:0">';
+    if (st === ST.M || st === ST.R) {
+      jf += '<div class="t">' + esc(t.text || '') + '</div><div class="s">' + (t.ov ? 'chosen manually' : Math.round((t.score || 0) * 100) + '% match' + (st === ST.R ? ' (suggestion)' : '')) + '</div>';
+    } else if (st === ST.I) {
+      jf += '<div class="s">ignored</div>';
+    } else {
+      jf += '<div class="s">' + (t.ov && t.item ? 'chosen song no longer in the library' : st === ST.P ? 'not matched yet' : 'not in the library') + '</div>';
+    }
+    jf += '</div>';
+    var a = '<div class="a">';
+    if (st === ST.R) { a += '<button type="button" data-act="accept" data-i="' + i + '">Accept</button>'; }
+    if (st !== ST.I) { a += '<button type="button" data-act="find" data-i="' + i + '">Find</button><button type="button" data-act="ignore" data-i="' + i + '">Ignore</button>'; }
+    if (t.ov) { a += '<button type="button" data-act="clear" data-i="' + i + '" title="Remove the manual choice">' + (st === ST.I ? 'Unignore' : 'Reset') + '</button>'; }
+    a += '</div>';
+    html += '<div class="ss-row" style="top:' + (r * ROW) + 'px"><div class="n">' + (i + 1) + '</div>' + sp + jf + a + '</div>';
+  }
+  vp.querySelectorAll('.ss-row,.ss-empty').forEach(function (x) { x.remove(); });
+  vp.insertAdjacentHTML('beforeend', html);
+}
+
+// Optimistic local update; the server applies it with a quick rematch.
+function override(i, action, item, text) {
+  var t = detail.tracks[i];
+  return post('Override', { key: t.key, action: action, item: item || null, playlist: detailId }).then(function () {
+    if (action === 'ignore') { t.st = ST.I; t.ov = true; }
+    else if (action === 'clear') { t.ov = false; t.st = ST.P; t.item = null; t.text = null; }
+    else { t.st = ST.M; t.ov = true; if (item) { t.item = item; t.text = text; } }
+    buildRows(true);
+    startPolling(8000);
+  }, fail);
+}
+
+// ---------------------------------------------------------------- find dialog
+var findIdx = -1, findTimer = null, findSeq = 0;
+function openFind(i) {
+  findIdx = i;
+  var t = detail.tracks[i];
+  Q('#ssFindFor').textContent = 'For: ' + t.title + ' — ' + (t.artists || []).join(', ');
+  Q('#ssFind').classList.remove('hide');
+  var q = Q('#ssFindQ'); q.value = t.title; q.focus(); q.select();
+  search();
+}
+function closeFind() { Q('#ssFind').classList.add('hide'); Q('#ssFindRes').innerHTML = ''; findIdx = -1; }
+function search() {
+  var q = Q('#ssFindQ').value.trim(), seq = ++findSeq;
+  if (q.length < 2) { Q('#ssFindRes').innerHTML = ''; return; }
+  Q('#ssFindRes').innerHTML = '<div class="ss-empty">Searching...</div>';
+  ApiClient.fetch({ url: url('Search?q=' + encodeURIComponent(q)), type: 'GET', dataType: 'json' }).then(function (list) {
+    if (seq !== findSeq) { return; }
+    Q('#ssFindRes').innerHTML = list.length ? list.map(function (r) {
+      var d = r.sec ? Math.floor(r.sec / 60) + ':' + ('0' + r.sec % 60).slice(-2) : '';
+      return '<button type="button" data-item="' + esc(r.id) + '" data-text="' + esc(r.text) + '"><div>' + esc(r.title) + '</div><div class="s">' + esc(r.artist || '') + (r.album ? ' &middot; ' + esc(r.album) : '') + (d ? ' &middot; ' + d : '') + '</div></button>';
+    }).join('') : '<div class="ss-empty">No songs found.</div>';
+  }, fail);
+}
+
+// ---------------------------------------------------------------- settings
+function renderSettings() {
+  var s = settings;
+  Q('#ssClient').value = s.clientId || '';
+  Q('#ssPublic').value = s.publicUrl || '';
+  Q('#ssPrefix').value = s.namePrefix || '';
+  Q('#ssMode').value = s.defaultMode === 'add' ? 'add' : 'mirror';
+  var r = s.redirectUri || '';
+  Q('#ssRedirect').textContent = r;
+  Q('#ssRedirWarn').textContent = /^http:\/\/(?!127\.0\.0\.1|\[::1\])/.test(r) ? 'This is not https: Spotify will reject it. Set the public https URL of your server above (e.g. behind a reverse proxy).' : '';
+  Q('#ssOwner').innerHTML = '<option value="">Choose a user</option>' + (s.users || []).map(function (u) {
+    return '<option value="' + esc(u.id) + '"' + (u.id === s.ownerUserId ? ' selected' : '') + '>' + esc(u.name) + '</option>';
+  }).join('');
+  Q('#ssLogin').querySelector('span').textContent = s.connected ? 'Reconnect Spotify' : 'Connect Spotify';
+  Q('#ssLogout').classList.toggle('hide', !s.connected);
+}
+function saveSettings() {
+  var body = {
+    clientId: Q('#ssClient').value.trim(), publicUrl: Q('#ssPublic').value.trim(), namePrefix: Q('#ssPrefix').value,
+    defaultMode: Q('#ssMode').value, ownerUserId: Q('#ssOwner').value || '00000000-0000-0000-0000-000000000000'
+  };
+  return post('Settings', body).then(function () { delete cache.Settings; return loadSettings(); }).then(function () { toast('Settings saved'); });
+}
+function login() {
+  // Open the popup synchronously (inside the click) so it is not blocked, then point it at Spotify.
+  var w = window.open('about:blank', 'spotisync-login', 'width=520,height=760');
+  saveSettings().then(function () {
+    return ApiClient.fetch({ url: url('Login'), type: 'GET', dataType: 'json' });
+  }).then(function (r) {
+    if (w && !w.closed) { w.location.href = r.url; } else { window.location.href = r.url; }
+  }, function (e) { if (w) { w.close(); } fail(e); });
+}
+
+// ---------------------------------------------------------------- navigation & events
+function show(v) {
+  Q('#ssPl').classList.toggle('hide', v !== 'pl');
+  Q('#ssDet').classList.toggle('hide', v !== 'det');
+  Q('#ssSet').classList.toggle('hide', v !== 'set');
+  Q('#ssLog').classList.toggle('hide', v !== 'log');
+  page.querySelectorAll('#ssMain button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v || (v === 'det' && b.dataset.v === 'pl')); });
+  if (v !== 'det') { detailId = null; detail = null; }
+}
+
+Q('#ssMain').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b) { show(b.dataset.v); if (b.dataset.v === 'pl') { renderList(); } } });
+Q('#ssFilter').addEventListener('input', renderList);
+Q('#ssOnlyOn').addEventListener('change', renderList);
+Q('#ssList').addEventListener('click', function (ev) {
+  var row = ev.target.closest('[data-id]');
+  if (row && ev.target.closest('[data-open]') && !row.classList.contains('ss-dis')) { openDetail(row.dataset.id); }
+});
+Q('#ssList').addEventListener('change', function (ev) {
+  var row = ev.target.closest('[data-id]'); if (!row) { return; }
+  if (ev.target.dataset.on) { patchPlaylist(row.dataset.id, { enabled: ev.target.checked }); }
+  if (ev.target.dataset.mode) { patchPlaylist(row.dataset.id, { mode: ev.target.value }); }
+});
+Q('#ssBack').addEventListener('click', function () { show('pl'); renderList(); });
+Q('#ssDMode').addEventListener('change', function () { patchPlaylist(detailId, { mode: Q('#ssDMode').value }); });
+Q('#ssDOn').addEventListener('change', function () { patchPlaylist(detailId, { enabled: Q('#ssDOn').checked }); });
+Q('#ssTTabs').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b && detail) { tab = +b.dataset.t; buildRows(false); } });
+var tfTimer = null;
+Q('#ssTFilter').addEventListener('input', function () { clearTimeout(tfTimer); tfTimer = setTimeout(function () { buildRows(false); }, 150); });
+var raf = 0;
+Q('#ssVp').addEventListener('scroll', function () { if (!raf) { raf = requestAnimationFrame(function () { raf = 0; drawRows(false); }); } }, { passive: true });
+Q('#ssVp').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-act]'); if (!b) { return; }
+  var i = +b.dataset.i, act = b.dataset.act;
+  if (act === 'find') { openFind(i); } else { override(i, act); }
+});
+Q('#ssAcceptAll').addEventListener('click', function () {
+  post('Playlists/' + encodeURIComponent(detailId) + '/AcceptAll').then(function (r) { return typeof r === 'string' ? r : r.text(); }).then(function (n) {
+    toast((n || 0) + ' suggestions accepted');
+    (detail.tracks || []).forEach(function (t) { if (t.st === ST.R && t.item) { t.st = ST.M; t.ov = true; } });
+    buildRows(true); startPolling(8000);
+  }, fail);
+});
+function copyMissing(id) {
+  ApiClient.fetch({ url: url('Missing' + (id ? '?playlist=' + encodeURIComponent(id) : '')), type: 'GET', dataType: 'text' }).then(function (txt) {
+    if (!txt) { toast('Nothing missing'); return; }
+    copy(txt, txt.trim().split('\n').length + ' links');
+  }, fail);
+}
+Q('#ssMissing').addEventListener('click', function () { copyMissing(detailId); });
+Q('#ssAllMissing').addEventListener('click', function () { copyMissing(null); });
+Q('#ssSync').addEventListener('click', function () { post('Sync', { mode: 'full' }).then(function () { toast('Sync started'); startPolling(8000); }, fail); });
+Q('#ssRematch').addEventListener('click', function () { post('Sync', { mode: 'rematch' }).then(function () { toast('Rematch started'); startPolling(8000); }, fail); });
+Q('#ssForm').addEventListener('submit', function (ev) { ev.preventDefault(); saveSettings().catch(fail); });
+Q('#ssCopyRedirect').addEventListener('click', function () { copy(Q('#ssRedirect').textContent, 'Redirect URI'); });
+Q('#ssLogin').addEventListener('click', login);
+Q('#ssLogout').addEventListener('click', function () { post('Logout').then(function () { delete cache.Settings; loadSettings(); }, fail); });
+Q('#ssFindQ').addEventListener('input', function () { clearTimeout(findTimer); findTimer = setTimeout(search, 250); });
+Q('#ssFindClose').addEventListener('click', closeFind);
+Q('#ssFind').addEventListener('click', function (ev) {
+  if (ev.target === Q('#ssFind')) { closeFind(); return; }
+  var b = ev.target.closest('button[data-item]');
+  if (b && findIdx >= 0) { var i = findIdx; closeFind(); override(i, 'pick', b.dataset.item, b.dataset.text); }
+});
+function onKey(ev) { if (ev.key === 'Escape' && findIdx >= 0) { closeFind(); } }
+function onVisibility() { if (visible && document.visibilityState === 'visible' && wasRunning) { startPolling(); } }
+function onMessage(ev) { if (ev.data === 'spotisync-login') { delete cache.Settings; loadSettings(); refreshData(); } }
+page.addEventListener('viewshow', function () {
+  visible = true;
+  document.addEventListener('visibilitychange', onVisibility);
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('message', onMessage);
+  loadSettings();
+  refreshData();
+  startPolling();
+});
+page.addEventListener('viewhide', function () {
+  visible = false;
+  clearTimeout(pollTimer); pollTimer = null;
+  document.removeEventListener('visibilitychange', onVisibility);
+  document.removeEventListener('keydown', onKey);
+  window.removeEventListener('message', onMessage);
+});
+})();
+</script>
+</div>

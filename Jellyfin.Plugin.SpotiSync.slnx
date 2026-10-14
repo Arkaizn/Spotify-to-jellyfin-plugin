@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Jellyfin.Plugin.SpotiSync/Jellyfin.Plugin.SpotiSync.csproj" />
+  <Project Path="Jellyfin.Plugin.SpotiSync.Tests/Jellyfin.Plugin.SpotiSync.Tests.csproj" />
+</Solution>
