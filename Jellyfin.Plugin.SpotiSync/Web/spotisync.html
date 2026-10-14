@@ -31,6 +31,12 @@
 .ss-list .ss-dis .ss-name{cursor:default}
 .ss-list .ss-err{color:var(--ss-err)}
 .ss-list select{background:var(--ss-paper);color:var(--ss-fg);border:1px solid var(--ss-div);border-radius:4px;padding:.3em}
+.ss-add{display:flex;gap:.5em;flex-wrap:wrap;margin:0 0 .3em}
+.ss-add .ss-in{flex:1;min-width:14em}
+.ss-add .ss-btn{font-size:.9em;padding:.5em .9em}
+.ss-hint{font-size:.8em;color:var(--ss-mut);margin:0 0 1em}
+.ss-src{font-size:.72em;padding:.05em .45em;border-radius:.8em;border:1px solid currentColor;margin-left:.5em;vertical-align:middle;color:var(--ss-mut)}
+.ss-x{background:none;border:0;color:var(--ss-mut);cursor:pointer;font-size:1.1em;padding:0 .2em}
 .ss-sw{position:relative;width:38px;height:22px;display:inline-block}
 .ss-sw input{opacity:0;width:0;height:0}
 .ss-sw span{position:absolute;inset:0;border-radius:11px;background:var(--ss-div);cursor:pointer;transition:.2s}
@@ -93,6 +99,12 @@
 </div>
 
 <section id="ssPl">
+  <form class="ss-add" id="ssAddForm">
+    <input id="ssAddUrl" class="ss-in" type="url" placeholder="Paste a public Spotify playlist link (no account or Premium needed)" autocomplete="off">
+    <button type="submit" class="ss-btn" id="ssAddBtn">Add playlist</button>
+    <label class="ss-btn" title="Playlist1.json / YourLibrary.json from Spotify's &quot;Download your data&quot;">Import Spotify data<input type="file" id="ssImport" accept=".json,application/json" multiple hidden></label>
+  </form>
+  <div class="fd ss-hint">Public links: Spotify only shows the first 100 songs of a playlist this way. For longer playlists import the files from Spotify &rarr; Account &rarr; Privacy &rarr; <i>Download your data</i>.</div>
   <div class="ss-tools">
     <input id="ssFilter" class="ss-in ss-grow" type="search" placeholder="Filter playlists" autocomplete="off">
     <label><input type="checkbox" id="ssOnlyOn"> Only synced</label>
@@ -247,7 +259,7 @@ function renderStatus(s) {
 // ---------------------------------------------------------------- data
 function refreshData() {
   return getJson('Playlists').then(function (c) {
-    catalog = c; renderList();
+    catalog = c; renderList(); if (settings) { renderNotice(); }
     if (detailId) { return loadDetail(detailId, true); }
   }, fail);
 }
@@ -256,8 +268,9 @@ function loadSettings() {
 }
 function renderNotice() {
   var n = [], s = settings || {};
-  if (!s.clientId) { n.push('Enter your Spotify client ID under Settings.'); }
-  else if (!s.connected) { n.push('Spotify is not connected. Use &ldquo;Connect Spotify&rdquo; under Settings.'); }
+  var hasOwn = catalog && catalog.playlists && catalog.playlists.some(function (p) { return p.source; });
+  if (!s.clientId && !hasOwn) { n.push('Paste the link of a public Spotify playlist below to get started, or set up a Spotify app under Settings (needs Premium on the app owner).'); }
+  else if (!s.connected && !(catalog && catalog.playlists && catalog.playlists.some(function (p) { return p.source; }))) { n.push('Spotify is not connected. Connect it under Settings, or simply paste the link of a public playlist below (no account or Premium needed).'); }
   if (!s.ownerUserId || /^0{8}-/.test(s.ownerUserId)) { n.push('Choose the Jellyfin user the playlists belong to under Settings.'); }
   if (s.rateLimitedUntil) { n.push('Spotify asked us to slow down until ' + esc(new Date(s.rateLimitedUntil).toLocaleString()) + '. Cached track lists are used until then.'); }
   Q('#ssNotice').innerHTML = n.map(function (t) { return '<div class="ss-note">' + t + '</div>'; }).join('');
@@ -285,10 +298,13 @@ function renderList() {
       ? (e.total || 0) + ' songs' + (e.ownerName ? ' &middot; ' + esc(e.ownerName) : '') + (e.collab ? ' &middot; collaborative' : '') +
         (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + (e.matched || 0) + ' in Jellyfin' : '') +
         (e.lastSync ? ' &middot; synced ' + esc(new Date(e.lastSync).toLocaleString()) : '')
-      : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on';
+      : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on. Add it by its public link instead.';
+    var src = e.source === 'public' ? '<span class="ss-src">public link</span>' : e.source === 'file' ? '<span class="ss-src">imported</span>' : '';
+    var rm = e.source ? ' <button type="button" class="ss-x" data-rm="1" title="Remove from SpotiSync (the Jellyfin playlist stays)">&times;</button>' : '';
+    var cap = e.capped ? '<div class="ss-sub" style="color:var(--ss-warn)">Spotify shows only the first 100 songs of public playlists. Import your Spotify data for the rest.</div>' : '';
     return '<div data-id="' + esc(e.id) + '" class="' + (readable ? '' : 'ss-dis') + '">' +
       (e.image ? '<img loading="lazy" alt="" src="' + esc(e.image) + '">' : '<div class="ss-cov"></div>') +
-      '<div style="min-width:0"><div class="ss-name" data-open="1">' + esc(e.name) + '</div><div class="ss-sub">' + sub + '</div>' +
+      '<div style="min-width:0"><div class="ss-name"><span data-open="1">' + esc(e.name) + '</span>' + src + rm + '</div><div class="ss-sub">' + sub + '</div>' + cap +
       (e.error ? '<div class="ss-sub ss-err">' + esc(e.error) + '</div>' : '') + '</div>' +
       bar(e) +
       '<select data-mode="1"' + (readable ? '' : ' disabled') + '><option value="mirror"' + (e.mode !== 'add' ? ' selected' : '') + '>Mirror</option><option value="add"' + (e.mode === 'add' ? ' selected' : '') + '>Add only</option></select>' +
@@ -475,6 +491,37 @@ Q('#ssList').addEventListener('change', function (ev) {
   var row = ev.target.closest('[data-id]'); if (!row) { return; }
   if (ev.target.dataset.on) { patchPlaylist(row.dataset.id, { enabled: ev.target.checked }); }
   if (ev.target.dataset.mode) { patchPlaylist(row.dataset.id, { mode: ev.target.value }); }
+});
+Q('#ssList').addEventListener('click', function (ev) {
+  var b = ev.target.closest('[data-rm]'); if (!b) { return; }
+  var row = b.closest('[data-id]');
+  ApiClient.fetch({ url: url('Playlists/' + encodeURIComponent(row.dataset.id)), type: 'DELETE' }).then(function () {
+    catalog.playlists = catalog.playlists.filter(function (p) { return p.id !== row.dataset.id; });
+    renderList(); toast('Removed (the Jellyfin playlist was kept)');
+  }, fail);
+});
+Q('#ssAddForm').addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var link = Q('#ssAddUrl').value.trim(); if (!link) { return; }
+  Q('#ssAddBtn').disabled = true;
+  post('Public', { url: link }).then(function (r) { return r.json(); }).then(function (e) {
+    Q('#ssAddUrl').value = '';
+    toast('Added \u201c' + e.name + '\u201d (' + (e.total || 0) + ' songs), syncing now');
+    delete cache.Playlists; refreshData(); renderNotice(); startPolling(8000);
+  }, fail).then(function () { Q('#ssAddBtn').disabled = false; });
+});
+Q('#ssImport').addEventListener('change', function (ev) {
+  var files = Array.prototype.slice.call(ev.target.files || []), total = 0, names = 0;
+  ev.target.value = '';
+  files.reduce(function (p, f) {
+    return p.then(function () { return f.text(); }).then(function (txt) {
+      return ApiClient.fetch({ url: url('Import'), type: 'POST', data: txt, contentType: 'application/json' });
+    }).then(function (r) { return r.json(); }).then(function (res) { total += res.tracks; names += res.playlists; },
+      function (e) { toast(f.name + ': ' + (e && e.status === 400 ? 'not a Spotify playlist file' : 'import failed')); });
+  }, Promise.resolve()).then(function () {
+    if (names) { toast('Imported ' + names + ' playlists (' + total + ' songs). Switch on the ones to sync.'); }
+    delete cache.Playlists; refreshData(); renderNotice(); startPolling(8000);
+  });
 });
 Q('#ssBack').addEventListener('click', function () { show('pl'); renderList(); });
 Q('#ssDMode').addEventListener('change', function () { patchPlaylist(detailId, { mode: Q('#ssDMode').value }); });

@@ -60,6 +60,7 @@ public sealed class SyncEngine : IDisposable
     private readonly Func<SyncSettings> _settings;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _runLock = new(1, 1);
+    private readonly IPublicPlaylistSource? _public;
 
     /// <summary>Initializes a new instance of the <see cref="SyncEngine"/> class.</summary>
     /// <param name="spotify">Spotify.</param>
@@ -69,8 +70,10 @@ public sealed class SyncEngine : IDisposable
     /// <param name="cache">Index cache.</param>
     /// <param name="settings">Settings accessor.</param>
     /// <param name="logger">Logger.</param>
-    public SyncEngine(ISpotifySource spotify, ILibrarySource library, IPlaylistTarget target, StateStore store, IndexCache cache, Func<SyncSettings> settings, ILogger logger)
+    /// <param name="publicSource">Reader for public playlists (no account).</param>
+    public SyncEngine(ISpotifySource spotify, ILibrarySource library, IPlaylistTarget target, StateStore store, IndexCache cache, Func<SyncSettings> settings, ILogger logger, IPublicPlaylistSource? publicSource = null)
     {
+        _public = publicSource;
         _spotify = spotify;
         _library = library;
         _target = target;
@@ -154,10 +157,11 @@ public sealed class SyncEngine : IDisposable
         // 1. Spotify playlist list: one listing per sync.
         if (mode == SyncMode.Full)
         {
+            ctx.PublicOk = true;
             ctx.SpotifyOk = await _spotify.IsConnectedAsync(ct).ConfigureAwait(false);
             if (!ctx.SpotifyOk)
             {
-                outcome.SpotifyError = "not connected";
+                // Fine: public links and imported files work without an account.
             }
             else if (await _spotify.GetRateLimitDeadlineAsync(ct).ConfigureAwait(false) is { } until)
             {
@@ -294,8 +298,32 @@ public sealed class SyncEngine : IDisposable
 
         bool liked = entry.Id == CatalogEntry.LikedId;
 
-        // --- fetch only when the snapshot changed
-        if (ctx.SpotifyOk && firstPass)
+        // --- public link: one page request; the track list only changes when the content did
+        if (entry.Source == CatalogEntry.SourcePublic && ctx.PublicOk && firstPass && _public is not null && entry.SpotifyId is not null)
+        {
+            var pub = await _public.GetAsync(entry.SpotifyId, ct).ConfigureAwait(false);
+            var snap = Snapshot(pub.Tracks);
+            if (state.FetchedAt is null || !string.Equals(state.Snapshot, snap, StringComparison.Ordinal))
+            {
+                MergeTracks(state, pub.Tracks);
+                state.Snapshot = snap;
+                state.FetchedAt = DateTime.UtcNow;
+                dirty = true;
+                ctx.Outcome.Fetched++;
+            }
+
+            if (entry.Image != pub.Image || entry.Total != pub.Tracks.Count || entry.Capped != pub.Capped || entry.Snapshot != snap)
+            {
+                entry.Image = pub.Image;
+                entry.Total = pub.Tracks.Count;
+                entry.Capped = pub.Capped;
+                entry.Snapshot = snap;
+                catalogDirty = true;
+            }
+        }
+
+        // --- Spotify account: fetch only when the snapshot changed
+        if (entry.Source is null && ctx.SpotifyOk && firstPass)
         {
             try
             {
@@ -761,6 +789,15 @@ public sealed class SyncEngine : IDisposable
             result.Add(e);
         }
 
+        // Public links and imported files are not part of the account's list: keep them.
+        foreach (var e in catalog.Playlists)
+        {
+            if (e.Source is not null)
+            {
+                result.Add(e);
+            }
+        }
+
         if (result.Count != catalog.Playlists.Count)
         {
             dirty = true;
@@ -786,6 +823,20 @@ public sealed class SyncEngine : IDisposable
             set(value);
             return true;
         }
+    }
+
+    /// <summary>Change marker for track lists that have no Spotify snapshot id.</summary>
+    /// <param name="tracks">Tracks.</param>
+    /// <returns>Short hash.</returns>
+    public static string Snapshot(List<SpTrack> tracks)
+    {
+        var sb = new System.Text.StringBuilder(tracks.Count * 24);
+        foreach (var t in tracks)
+        {
+            sb.Append(t.Uri ?? t.Id).Append('|').Append(t.Name).Append('\n');
+        }
+
+        return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).AsSpan(0, 12));
     }
 
     private static string Hash(List<Guid> items)
@@ -818,6 +869,8 @@ public sealed class SyncEngine : IDisposable
         public SyncOutcome Outcome { get; }
 
         public bool SpotifyOk { get; set; }
+
+        public bool PublicOk { get; set; }
 
         public LibraryIndex? Index { get; set; }
 

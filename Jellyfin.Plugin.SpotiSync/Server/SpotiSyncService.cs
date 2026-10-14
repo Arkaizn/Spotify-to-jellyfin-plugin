@@ -44,7 +44,8 @@ public sealed class SpotiSyncService : IDisposable
             Store,
             Cache,
             () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode),
-            loggerFactory.CreateLogger<SyncEngine>());
+            loggerFactory.CreateLogger<SyncEngine>(),
+            Public = new SpotifyPublicClient(httpFactory, NamedClient.Default));
     }
 
     /// <summary>Gets the state store.</summary>
@@ -52,6 +53,9 @@ public sealed class SpotiSyncService : IDisposable
 
     /// <summary>Gets the Spotify client.</summary>
     public SpotifyClient Spotify { get; }
+
+    /// <summary>Gets the public playlist reader.</summary>
+    public SpotifyPublicClient Public { get; }
 
     /// <summary>Gets the library source.</summary>
     public JellyfinLibrarySource Library { get; }

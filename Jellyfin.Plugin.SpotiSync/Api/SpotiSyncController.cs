@@ -226,6 +226,156 @@ public class SpotiSyncController : ControllerBase
         return found ? NoContent() : NotFound();
     }
 
+    /// <summary>Adds a public Spotify playlist by link (works without a Spotify account or Premium).</summary>
+    /// <returns>The new catalog entry.</returns>
+    [HttpPost("Public")]
+    public async Task<ActionResult> AddPublic()
+    {
+        var req = await ReadAsync(StateJsonContext.Default.AddPublicRequest).ConfigureAwait(false);
+        var spotifyId = SpotifyPublicClient.ParsePlaylistId(req?.Url);
+        if (spotifyId is null)
+        {
+            return BadRequest("Paste a Spotify playlist link like https://open.spotify.com/playlist/...");
+        }
+
+        PublicPlaylist pub;
+        try
+        {
+            pub = await _service.Public.GetAsync(spotifyId, HttpContext.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is SpotifyApiException or System.Net.Http.HttpRequestException or JsonException)
+        {
+            return BadRequest("Could not read this playlist: " + e.Message);
+        }
+
+        var id = "pub-" + spotifyId;
+        CatalogEntry? entry = null;
+        await UpdateCatalogAsync(c =>
+        {
+            entry = c.Playlists.Find(p => p.Id == id);
+            if (entry is null)
+            {
+                entry = new CatalogEntry { Id = id, Mode = SyncModes.Normalize(SpotiSyncService.Config.DefaultMode) };
+                c.Playlists.Add(entry);
+            }
+
+            entry.Source = CatalogEntry.SourcePublic;
+            entry.SpotifyId = spotifyId;
+            entry.Name = pub.Name;
+            entry.Image = pub.Image;
+            entry.Total = pub.Tracks.Count;
+            entry.Capped = pub.Capped;
+            entry.Readable = true;
+            entry.Enabled = true;
+        }).ConfigureAwait(false);
+        QueueRun(rematch: false);
+        return Json(entry!, StateJsonContext.Default.CatalogEntry);
+    }
+
+    /// <summary>
+    /// Imports one JSON file of Spotify's data export (Playlist1.json, YourLibrary.json, ...).
+    /// The body is the file content. Imported playlists start switched off.
+    /// </summary>
+    /// <returns>What was imported.</returns>
+    [HttpPost("Import")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    public async Task<ActionResult> Import()
+    {
+        List<ExportedPlaylist> found;
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(Request.Body, default, HttpContext.RequestAborted).ConfigureAwait(false);
+            found = SpotifyExport.Parse(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return BadRequest("This is not a JSON file from Spotify's data export.");
+        }
+
+        if (found.Count == 0)
+        {
+            return BadRequest("No playlists in this file. Use Playlist1.json (and Playlist2.json, ...) or YourLibrary.json from Spotify's data export.");
+        }
+
+        var result = new ImportResultDto();
+        var ct = HttpContext.RequestAborted;
+        var entries = new List<(string Id, ExportedPlaylist Pl)>();
+        await UpdateCatalogAsync(c =>
+        {
+            foreach (var pl in found)
+            {
+                var id = "file-" + Slug(pl.Name);
+                var entry = c.Playlists.Find(p => p.Id == id);
+                if (entry is null)
+                {
+                    entry = new CatalogEntry { Id = id, Mode = SyncModes.Normalize(SpotiSyncService.Config.DefaultMode) };
+                    c.Playlists.Add(entry);
+                }
+
+                entry.Source = CatalogEntry.SourceFile;
+                entry.Name = pl.Name;
+                entry.Total = pl.Tracks.Count;
+                entry.Readable = true;
+                entry.Snapshot = SyncEngine.Snapshot(pl.Tracks);
+                entries.Add((id, pl));
+            }
+        }).ConfigureAwait(false);
+
+        foreach (var (id, pl) in entries)
+        {
+            var state = await _service.Store.LoadPlaylistAsync(id, ct).ConfigureAwait(false) ?? new PlaylistState { Id = id };
+            var snap = SyncEngine.Snapshot(pl.Tracks);
+            if (state.Snapshot != snap)
+            {
+                SyncEngine.MergeTracks(state, pl.Tracks);
+                state.Snapshot = snap;
+                state.FetchedAt = DateTime.UtcNow;
+                await _service.Store.SavePlaylistAsync(state, ct).ConfigureAwait(false);
+            }
+
+            result.Playlists++;
+            result.Tracks += pl.Tracks.Count;
+            result.Names.Add(pl.Name);
+        }
+
+        QueueRun(rematch: true);
+        return Json(result, StateJsonContext.Default.ImportResultDto);
+    }
+
+    /// <summary>Removes a public-link or imported playlist from SpotiSync (the Jellyfin playlist stays).</summary>
+    /// <param name="id">Catalog id.</param>
+    /// <returns>No content.</returns>
+    [HttpDelete("Playlists/{id}")]
+    public async Task<ActionResult> RemovePlaylist([FromRoute] string id)
+    {
+        bool removed = false;
+        await UpdateCatalogAsync(c => removed = c.Playlists.RemoveAll(p => p.Id == id && p.Source is not null) > 0).ConfigureAwait(false);
+        if (!removed)
+        {
+            return NotFound();
+        }
+
+        _service.Store.DeletePlaylist(id);
+        return NoContent();
+    }
+
+    private static string Slug(string name)
+    {
+        var sb = new StringBuilder(name.Length);
+        foreach (char ch in Matching.TextNorm.Normalize(name))
+        {
+            sb.Append(char.IsAsciiLetterOrDigit(ch) ? ch : '-');
+        }
+
+        var slug = sb.ToString().Trim('-');
+        if (slug.Length == 0 || slug.Length > 60)
+        {
+            slug = (slug.Length > 0 ? slug[..40] + "-" : string.Empty) + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(name)).AsSpan(0, 4)).ToLowerInvariant();
+        }
+
+        return slug;
+    }
+
     /// <summary>Cached tracks and matches of a playlist, straight from disk, with ETag.</summary>
     /// <param name="id">Spotify playlist id.</param>
     /// <returns>Playlist JSON.</returns>

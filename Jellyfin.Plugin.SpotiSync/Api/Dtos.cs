@@ -78,6 +78,20 @@ public sealed class OverrideRequest
     public string? Playlist { get; set; }
 }
 
+public sealed class AddPublicRequest
+{
+    public string? Url { get; set; }
+}
+
+public sealed class ImportResultDto
+{
+    public int Playlists { get; set; }
+
+    public int Tracks { get; set; }
+
+    public List<string> Names { get; set; } = [];
+}
+
 public sealed class SyncRequest
 {
     public string? Mode { get; set; }
