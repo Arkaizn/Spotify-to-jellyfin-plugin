@@ -326,3 +326,24 @@ public class PlaylistDiffTests
         Assert.True(plan.Replace);
     }
 }
+
+public class SyncEngineNameClashTests
+{
+    [Fact]
+    public async Task TwoSpotifyPlaylistsWithSameName_GetSeparateJellyfinPlaylists()
+    {
+        using var h = new Harness();
+        var a = h.Library.Add("Alpha Song", "Band One", 200);
+        var b = h.Library.Add("Beta Tune", "Band Two", 210);
+        h.Spotify.AddPlaylist("p1", "Mix", [FakeSpotify.Track("t1", "Alpha Song", "Band One", 200)]);
+        h.Spotify.AddPlaylist("p2", "Mix", [FakeSpotify.Track("t2", "Beta Tune", "Band Two", 210)]);
+        await h.Sync();
+        await h.Enable("p1");
+        await h.Enable("p2");
+        await h.Sync();
+        await h.Sync();
+        Assert.Equal(2, h.Target.Playlists.Count);
+        Assert.Contains(h.Target.Playlists.Values, p => p.Items.SequenceEqual([a]));
+        Assert.Contains(h.Target.Playlists.Values, p => p.Items.SequenceEqual([b]));
+    }
+}

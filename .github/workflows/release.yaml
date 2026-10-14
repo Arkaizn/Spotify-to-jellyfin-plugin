@@ -1,0 +1,113 @@
+name: Release
+
+# Push a tag like v1.2.0 (optionally annotated: its message becomes the changelog).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Version and changelog
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # Jellyfin versions have four parts.
+          while [ "$(echo "$VERSION" | tr -cd '.' | wc -c)" -lt 3 ]; do VERSION="$VERSION.0"; done
+          CHANGELOG="$(git tag -l --format='%(contents:subject)%0a%(contents:body)' "$TAG" | sed '/^-----BEGIN/,$d' | sed '/^$/d')"
+          if [ -z "$CHANGELOG" ] || [ "$CHANGELOG" = "$(git log -1 --format=%s "$TAG")" ]; then
+            CHANGELOG="$(git log -1 --format=%s "$TAG")"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          { echo "changelog<<EOF"; echo "$CHANGELOG"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        run: |
+          dotnet build -c Release -p:Version=${{ steps.meta.outputs.version }} -p:AssemblyVersion=${{ steps.meta.outputs.version }} -p:FileVersion=${{ steps.meta.outputs.version }}
+          dotnet test -c Release --no-build
+          SPOTISYNC_BENCH=1 dotnet test -c Release --no-build --filter Category=Benchmark --logger "console;verbosity=detailed"
+
+      - name: Package
+        id: pkg
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
+        run: |
+          dotnet publish Jellyfin.Plugin.SpotiSync/Jellyfin.Plugin.SpotiSync.csproj -c Release -o out \
+            -p:Version=$VERSION -p:AssemblyVersion=$VERSION -p:FileVersion=$VERSION
+          mkdir pkg
+          cp out/Jellyfin.Plugin.SpotiSync.dll pkg/
+          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 - "$TS" > pkg/meta.json <<'PY'
+          import json, os, sys, re
+          y = open("build.yaml").read()
+          def field(name):
+              m = re.search(r'^' + name + r':\s*"?([^"\n]*)"?\s*$', y, re.M)
+              return m.group(1) if m else ""
+          def block(name):
+              m = re.search(r'^' + name + r':\s*>\s*\n((?:  .*\n?)+)', y, re.M)
+              return " ".join(l.strip() for l in m.group(1).splitlines()) if m else ""
+          print(json.dumps({
+              "category": field("category"), "changelog": os.environ["CHANGELOG"], "description": block("description"),
+              "guid": field("guid"), "name": field("name"), "overview": field("overview"), "owner": field("owner"),
+              "targetAbi": field("targetAbi"), "timestamp": sys.argv[1], "version": os.environ["VERSION"],
+              "status": "Active", "autoUpdate": True, "imagePath": "", "assemblies": []}, indent=2))
+          PY
+          ZIP="spotisync_${VERSION}.zip"
+          (cd pkg && zip -X "../$ZIP" Jellyfin.Plugin.SpotiSync.dll meta.json)
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "md5=$(md5sum "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TS" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" "${{ steps.pkg.outputs.zip }}" \
+            --title "SpotiSync ${{ steps.meta.outputs.version }}" --notes "$CHANGELOG"
+
+      - name: Update manifest.json on main
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          CHANGELOG: ${{ steps.meta.outputs.changelog }}
+          MD5: ${{ steps.pkg.outputs.md5 }}
+          TS: ${{ steps.pkg.outputs.timestamp }}
+          URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/${{ steps.pkg.outputs.zip }}
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 - <<'PY'
+          import json, os, re
+          abi = re.search(r'^targetAbi:\s*"?([^"\n]*)"?', open("build.yaml").read(), re.M).group(1)
+          with open("manifest.json") as f:
+              manifest = json.load(f)
+          entry = {
+              "version": os.environ["VERSION"], "changelog": os.environ["CHANGELOG"], "targetAbi": abi,
+              "sourceUrl": os.environ["URL"], "checksum": os.environ["MD5"], "timestamp": os.environ["TS"],
+          }
+          versions = [v for v in manifest[0]["versions"] if v["version"] != entry["version"]]
+          manifest[0]["versions"] = [entry] + versions
+          with open("manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "manifest: add SpotiSync ${VERSION}"
+          git push origin main

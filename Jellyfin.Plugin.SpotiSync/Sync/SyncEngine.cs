@@ -382,6 +382,11 @@ public sealed class SyncEngine : IDisposable
         else
         {
             var jfId = _target.Resolve(entry.JfId, name, owner);
+            if (jfId is Guid found && found != entry.JfId && ctx.Catalog.Playlists.Exists(p => p != entry && p.JfId == found))
+            {
+                jfId = null; // same name as a playlist another Spotify playlist already syncs into
+            }
+
             if (jfId is null)
             {
                 if (desired.Count > 0)

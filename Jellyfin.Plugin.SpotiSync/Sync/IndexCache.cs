@@ -24,7 +24,8 @@ public sealed class IndexCache : IDisposable
     public bool IsLoaded => _index is not null;
 
     /// <summary>Returns the index for library generation <paramref name="gen"/>, building it if needed.</summary>
-    /// <param name="gen">Library generation (0 = any cached index is fine).</param>
+    /// <param name="gen">Library generation. A negative value means "any cached index is fine; if one
+    /// has to be built, tag it with -gen".</param>
     /// <param name="source">Library.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The index.</returns>
@@ -34,10 +35,12 @@ public sealed class IndexCache : IDisposable
         try
         {
             CancelRelease();
-            if (_index is not null && (gen == 0 || _gen == gen))
+            if (_index is not null && (gen <= 0 || _gen == gen))
             {
                 return _index;
             }
+
+            gen = Math.Abs(gen);
 
             _index = null; // let the old one go before building the new one
             var hint = source.GetFingerprint().Count;

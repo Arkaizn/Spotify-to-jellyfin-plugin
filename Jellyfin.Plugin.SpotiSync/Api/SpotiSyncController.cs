@@ -375,7 +375,9 @@ public class SpotiSyncController : ControllerBase
             return Json(results, StateJsonContext.Default.ListSearchResultDto);
         }
 
-        var index = await _service.Cache.GetAsync(0, _service.Library, HttpContext.RequestAborted).ConfigureAwait(false);
+        // Tag the index with the current library generation so a sync right after can reuse it.
+        var gen = (await _service.Store.LoadCatalogAsync(HttpContext.RequestAborted).ConfigureAwait(false)).LibGen;
+        var index = await _service.Cache.GetAsync(-gen, _service.Library, HttpContext.RequestAborted).ConfigureAwait(false);
         try
         {
             foreach (var hit in index.Search(q, MaxSearchResults))
