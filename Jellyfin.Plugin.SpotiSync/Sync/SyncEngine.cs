@@ -343,6 +343,13 @@ public sealed class SyncEngine : IDisposable
             }
         }
 
+        // Liked Songs has no playlist object on Spotify: its size comes from the cached list.
+        if (liked && state.FetchedAt is not null && entry.Total != state.Tracks.Count)
+        {
+            entry.Total = state.Tracks.Count;
+            catalogDirty = true;
+        }
+
         // --- incremental matching
         dirty |= await MatchAsync(state, ctx, ct).ConfigureAwait(false);
 
@@ -570,7 +577,14 @@ public sealed class SyncEngine : IDisposable
             ctx.Index = await _cache.GetAsync(ctx.Catalog.LibGen, _library, ct).ConfigureAwait(false);
             ctx.Matcher = new Matcher(ctx.Index);
             ctx.Outcome.IndexUsed = true;
-            _logger.LogInformation("SpotiSync: library index {How} ({Count} songs, {Ms} ms)", cached ? "reused" : "built", ctx.Index.Count, sw.ElapsedMilliseconds);
+            if (cached)
+            {
+                _logger.LogInformation("SpotiSync: library index reused ({Count} songs)", ctx.Index.Count);
+            }
+            else
+            {
+                _logger.LogInformation("SpotiSync: library index built ({Count} songs, {Ms} ms, of which {ReadMs} ms reading from Jellyfin)", ctx.Index.Count, _cache.LastBuildMs, _cache.LastReadMs);
+            }
         }
 
         return ctx.Index;

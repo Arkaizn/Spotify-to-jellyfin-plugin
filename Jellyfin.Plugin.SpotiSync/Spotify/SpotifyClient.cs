@@ -28,8 +28,9 @@ public sealed class SpotifyClient : ISpotifySource, IDisposable
     /// <summary>Longest Retry-After we wait for inline; longer ones stop fetching.</summary>
     public static readonly TimeSpan MaxInlineWait = TimeSpan.FromSeconds(90);
 
-    private const string Api = "https://api.spotify.com/v1";
-    private const string Accounts = "https://accounts.spotify.com";
+    // Overridable for end-to-end tests against a local mock (read once at startup).
+    private static readonly string Api = (Environment.GetEnvironmentVariable("SPOTISYNC_SPOTIFY_API_URL") ?? "https://api.spotify.com/v1").TrimEnd('/');
+    private static readonly string Accounts = (Environment.GetEnvironmentVariable("SPOTISYNC_SPOTIFY_ACCOUNTS_URL") ?? "https://accounts.spotify.com").TrimEnd('/');
 
     // Response filter for /items. Both the 2026 ("item") and older ("track") shapes are listed.
     private const string ItemFields = "next,total,items(is_local,item(id,uri,name,type,duration_ms,is_local,artists(name),album(name),external_ids(isrc)),track(id,uri,name,type,duration_ms,is_local,artists(name),album(name),external_ids(isrc)))";

@@ -125,6 +125,24 @@ Benchmarks (synthetic library, Release build, `SPOTISYNC_BENCH=1`; see `Benchmar
 The index-build figure excludes Jellyfin's own database read of the songs, which depends on your
 server and disk.
 
+Measured in a real Jellyfin 12.2 container (2,000-song library, Spotify replaced by a local mock,
+`docker stats`):
+
+| | Result |
+| --- | --- |
+| Idle, 5 min after restart, without plugin | CPU avg 0.50 % (Jellyfin's own spikes up to 14 %), RAM 149 MiB |
+| Idle, 5 min after restart, with plugin | CPU avg 0.29 %, RAM 135 MiB; no difference beyond run-to-run noise |
+| Library read + index build | 133 ms warm, of which 111 ms is Jellyfin's database read (~55 µs per song) |
+| First sync (3 playlists, 330 tracks, 3 playlists created) | 2.7 s, mostly Jellyfin creating the playlists |
+| Sync with nothing changed | 0.1 s; Spotify calls: 1 playlist listing + 1 Liked Songs check |
+
+At about 55 µs per song, a 50,000-song library spends roughly 3 s in Jellyfin's database while
+the index is built. That only happens when there is something to match (new tracks, or a changed
+library), never on a sync where nothing changed.
+
+For end-to-end tests the Spotify hosts can be redirected with the `SPOTISYNC_SPOTIFY_API_URL`
+and `SPOTISYNC_SPOTIFY_ACCOUNTS_URL` environment variables. Leave them unset in normal use.
+
 ## Building
 
 ```sh

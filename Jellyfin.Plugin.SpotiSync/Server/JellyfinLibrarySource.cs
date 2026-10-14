@@ -62,6 +62,7 @@ public sealed class JellyfinLibrarySource : ILibrarySource
 
             var q = AudioQuery();
             q.ItemIds = batch;
+            q.SkipDeserialization = true; // only scalar columns are needed: ~17% faster in 12.2
             foreach (var item in _library.GetItemList(q))
             {
                 if (item is Audio a)

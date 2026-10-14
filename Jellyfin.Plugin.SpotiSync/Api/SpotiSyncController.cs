@@ -169,7 +169,7 @@ public class SpotiSyncController : ControllerBase
             }
             catch (Exception e) when (e is SpotifyAuthException or SpotifyApiException or System.Net.Http.HttpRequestException)
             {
-                _logger.LogWarning(e, "SpotiSync: Spotify login failed");
+                _logger.LogWarning("SpotiSync: Spotify login failed: {Message}", e.Message);
                 message = e.Message;
             }
         }

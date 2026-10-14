@@ -242,6 +242,7 @@ public class SyncEngineTests
         await h.Enable(CatalogEntry.LikedId);
         await h.Sync();
         Assert.Equal([lib[3], lib[4]], h.JellyfinItems("Liked Songs"));
+        Assert.Equal(2, (await h.Store.LoadCatalogAsync()).Playlists.Single(p => p.Id == CatalogEntry.LikedId).Total);
         await h.Sync();
         Assert.Equal(1, h.Spotify.LikedCalls);
     }

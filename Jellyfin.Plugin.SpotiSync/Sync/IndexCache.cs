@@ -20,6 +20,12 @@ public sealed class IndexCache : IDisposable
     /// <summary>Gets or sets how long the index survives after its last use.</summary>
     public TimeSpan KeepAlive { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>Gets the time the last build spent reading the library (ms).</summary>
+    public long LastReadMs { get; private set; }
+
+    /// <summary>Gets the total time of the last build (ms).</summary>
+    public long LastBuildMs { get; private set; }
+
     /// <summary>Gets a value indicating whether an index is currently held.</summary>
     public bool IsLoaded => _index is not null;
 
@@ -43,8 +49,12 @@ public sealed class IndexCache : IDisposable
             gen = Math.Abs(gen);
 
             _index = null; // let the old one go before building the new one
+            var total = System.Diagnostics.Stopwatch.StartNew();
             var hint = source.GetFingerprint().Count;
-            var built = LibraryIndexBuilder.Build(source.ReadAll(ct), hint, ct);
+            var read = new System.Diagnostics.Stopwatch();
+            var built = LibraryIndexBuilder.Build(Timed(source.ReadAll(ct), read), hint, ct);
+            LastReadMs = read.ElapsedMilliseconds;
+            LastBuildMs = total.ElapsedMilliseconds;
             _index = built;
             _gen = gen;
             return built;
@@ -81,6 +91,23 @@ public sealed class IndexCache : IDisposable
     {
         Drop();
         _gate.Dispose();
+    }
+
+    private static System.Collections.Generic.IEnumerable<LibraryRecord> Timed(System.Collections.Generic.IEnumerable<LibraryRecord> source, System.Diagnostics.Stopwatch sw)
+    {
+        using var e = source.GetEnumerator();
+        while (true)
+        {
+            sw.Start();
+            bool more = e.MoveNext();
+            sw.Stop();
+            if (!more)
+            {
+                yield break;
+            }
+
+            yield return e.Current;
+        }
     }
 
     private void CancelRelease()
