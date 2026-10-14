@@ -277,8 +277,10 @@ public sealed class LibraryIndexBuilder
     private readonly List<string> _artistNorm;
     private readonly List<int> _titlePairs; // tokenId, item, tokenId, item ...
     private readonly List<int> _artistPairs;
+    private readonly Dictionary<string, (string Norm, TrackTags Tags)> _albumCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string[]> _artistCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _variousCache = new(StringComparer.Ordinal);
     private readonly List<string> _artistScratch = new(8);
-    private readonly List<string> _rawArtistScratch = new(8);
     private Dictionary<string, int>? _isrc;
 
     /// <summary>Initializes a new instance of the <see cref="LibraryIndexBuilder"/> class.</summary>
@@ -313,7 +315,8 @@ public sealed class LibraryIndexBuilder
 
         int idx = _ids.Count;
         var clean = TitleCleaner.Clean(r.Name);
-        var tags = clean.Tags | TitleCleaner.AlbumTags(r.Album);
+        var album = Album(r.Album);
+        var tags = clean.Tags | album.Tags;
 
         _ids.Add(r.Id);
         _names.Add(r.Name ?? string.Empty);
@@ -323,30 +326,36 @@ public sealed class LibraryIndexBuilder
         _tags.Add(tags);
         _numbers.Add(clean.Numbers is null ? null : Intern(clean.Numbers));
         _albumDisplay.Add(Intern(r.Album ?? string.Empty));
-        _albumNorm.Add(Intern(string.IsNullOrEmpty(r.Album) ? string.Empty : TitleCleaner.Clean(r.Album).Base));
+        _albumNorm.Add(album.Norm);
         _duration.Add(r.RunTimeTicks is long t && t > 0 ? (int)(t / TimeSpan.TicksPerSecond) : 0);
 
         // Artists: track artists, album artists (unless "Various Artists"), featured artists in the title.
-        _rawArtistScratch.Clear();
+        // Artist strings repeat a lot, so their split / normalized form is cached per raw string.
+        _artistScratch.Clear();
         if (r.Artists is not null)
         {
-            _rawArtistScratch.AddRange(r.Artists);
+            foreach (var a in r.Artists)
+            {
+                AddArtists(a);
+            }
         }
 
         if (r.AlbumArtists is not null)
         {
             foreach (var a in r.AlbumArtists)
             {
-                if (Array.IndexOf(VariousArtists, TextNorm.Normalize(a)) < 0)
+                if (!IsVarious(a))
                 {
-                    _rawArtistScratch.Add(a);
+                    AddArtists(a);
                 }
             }
         }
 
-        _rawArtistScratch.AddRange(clean.Featured);
-        _artistScratch.Clear();
-        TextNorm.SplitArtists(_rawArtistScratch, _artistScratch);
+        foreach (var a in clean.Featured)
+        {
+            AddArtists(a);
+        }
+
         _artistStart.Add(_artistNorm.Count);
         foreach (var a in _artistScratch)
         {
@@ -383,6 +392,9 @@ public sealed class LibraryIndexBuilder
         _artistPairs.Clear();
         _intern.Clear();
         _seen.Clear();
+        _albumCache.Clear();
+        _artistCache.Clear();
+        _variousCache.Clear();
 
         return new LibraryIndex(
             n,
@@ -426,6 +438,62 @@ public sealed class LibraryIndexBuilder
         }
 
         return b.Build();
+    }
+
+    private (string Norm, TrackTags Tags) Album(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+        {
+            return (string.Empty, TrackTags.None);
+        }
+
+        if (!_albumCache.TryGetValue(raw, out var v))
+        {
+            v = (Intern(TitleCleaner.Clean(raw).Base), TitleCleaner.AlbumTags(raw));
+            _albumCache[raw] = v;
+        }
+
+        return v;
+    }
+
+    private void AddArtists(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return;
+        }
+
+        if (!_artistCache.TryGetValue(raw, out var split))
+        {
+            var list = new List<string>(2);
+            TextNorm.SplitArtists([raw], list);
+            split = new string[list.Count];
+            for (int k = 0; k < split.Length; k++)
+            {
+                split[k] = Intern(list[k]);
+            }
+
+            _artistCache[raw] = split;
+        }
+
+        foreach (var a in split)
+        {
+            if (!_artistScratch.Contains(a))
+            {
+                _artistScratch.Add(a);
+            }
+        }
+    }
+
+    private bool IsVarious(string raw)
+    {
+        if (!_variousCache.TryGetValue(raw, out bool various))
+        {
+            various = Array.IndexOf(VariousArtists, TextNorm.Normalize(raw)) >= 0;
+            _variousCache[raw] = various;
+        }
+
+        return various;
     }
 
     private void AddTokens(string text, int idx, List<int> pairs, int startCount)

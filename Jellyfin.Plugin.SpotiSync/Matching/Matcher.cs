@@ -103,7 +103,7 @@ public sealed class Matcher
     public const double ReviewThreshold = 0.60;
 
     /// <summary>Maximum candidates scored per track.</summary>
-    public const int MaxCandidates = 150;
+    public const int MaxCandidates = 64;
 
     /// <summary>Bump when scoring changes so stored matches get recomputed.</summary>
     public const int Version = 1;
@@ -150,7 +150,7 @@ public sealed class Matcher
         for (int c = 0; c < n; c++)
         {
             int i = _candItems[c];
-            double s = Score(q, x, i);
+            double s = Score(q, x, i, bestScore);
             if (s > bestScore)
             {
                 bestScore = s;
@@ -234,7 +234,15 @@ public sealed class Matcher
                     continue;
                 }
 
-                foreach (int i in x.ArtistPostings(tid))
+                // Very common artist words ("dj", "band", "orchestra") would touch most of the
+                // library for little ranking value.
+                var postings = x.ArtistPostings(tid);
+                if (postings.Length > commonCutoff)
+                {
+                    continue;
+                }
+
+                foreach (int i in postings)
                 {
                     if (_acc[i] > 0)
                     {
@@ -262,7 +270,7 @@ public sealed class Matcher
                 _candItems[k] = _touched[k];
             }
 
-            _candKeys.AsSpan(0, touched).Sort(_candItems.AsSpan(0, touched));
+            SelectTop(_candKeys, _candItems, touched, MaxCandidates);
             n = MaxCandidates;
         }
 
@@ -279,16 +287,82 @@ public sealed class Matcher
     /// <param name="x">Index.</param>
     /// <param name="i">Item index.</param>
     /// <returns>Score in [0, 1].</returns>
-    public static double Score(MatchQuery q, LibraryIndex x, int i)
+    public static double Score(MatchQuery q, LibraryIndex x, int i) => Score(q, x, i, -1);
+
+    /// <summary>
+    /// Score, or a value &lt;= <paramref name="beat"/> as soon as an upper bound shows the item
+    /// cannot beat it (skips the artist / album comparisons for hopeless candidates).
+    /// </summary>
+    /// <param name="q">Prepared track.</param>
+    /// <param name="x">Index.</param>
+    /// <param name="i">Item index.</param>
+    /// <param name="beat">Score to beat.</param>
+    /// <returns>Score in [0, 1].</returns>
+    public static double Score(MatchQuery q, LibraryIndex x, int i, double beat)
     {
         double title = TitleScore(q.TitleBase, q.TitleSorted, x.TitleBase[i], x.TitleSorted[i]);
-        double artist = ArtistScore(q.Artists, x.ArtistNorm.AsSpan(x.ArtistStart[i], x.ArtistStart[i + 1] - x.ArtistStart[i]));
         double duration = DurationScore(q.DurationSec, x.DurationSec[i]);
+        if (beat >= 0)
+        {
+            double upper = ApplyPenalties((WeightTitle * title) + WeightArtist + (WeightDuration * duration) + WeightAlbum, title, 1, q.Tags, x.Tags[i], q.Numbers, x.Numbers[i]);
+            if (upper <= beat)
+            {
+                return 0;
+            }
+        }
+
+        double artist = ArtistScore(q.Artists, x.ArtistNorm.AsSpan(x.ArtistStart[i], x.ArtistStart[i + 1] - x.ArtistStart[i]));
         string album = x.AlbumNorm[i];
         double albumScore = q.AlbumNorm.Length > 0 && album.Length > 0 ? Fuzzy.Ratio(q.AlbumNorm, album) : 0.5;
 
         double s = (WeightTitle * title) + (WeightArtist * artist) + (WeightDuration * duration) + (WeightAlbum * albumScore);
         return ApplyPenalties(s, title, artist, q.Tags, x.Tags[i], q.Numbers, x.Numbers[i]);
+    }
+
+    /// <summary>Moves the <paramref name="k"/> smallest keys (with their items) to the front (quickselect).</summary>
+    private static void SelectTop(float[] keys, int[] items, int n, int k)
+    {
+        int lo = 0, hi = n - 1;
+        var rnd = 12345u;
+        while (lo < hi)
+        {
+            rnd = (rnd * 1103515245u) + 12345u;
+            float pivot = keys[lo + (int)(rnd % (uint)(hi - lo + 1))];
+            int i = lo, j = hi;
+            while (i <= j)
+            {
+                while (keys[i] < pivot)
+                {
+                    i++;
+                }
+
+                while (keys[j] > pivot)
+                {
+                    j--;
+                }
+
+                if (i <= j)
+                {
+                    (keys[i], keys[j]) = (keys[j], keys[i]);
+                    (items[i], items[j]) = (items[j], items[i]);
+                    i++;
+                    j--;
+                }
+            }
+
+            if (k - 1 <= j)
+            {
+                hi = j;
+            }
+            else if (k - 1 >= i)
+            {
+                lo = i;
+            }
+            else
+            {
+                break;
+            }
+        }
     }
 
     /// <summary>Applies tag / number penalties and the title / artist caps.</summary>

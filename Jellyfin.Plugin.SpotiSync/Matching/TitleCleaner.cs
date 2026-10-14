@@ -61,6 +61,8 @@ public readonly record struct CleanTitle(string Base, TrackTags Tags, string? Nu
 /// </summary>
 public static class TitleCleaner
 {
+    private static readonly System.Buffers.SearchValues<char> Decoration = System.Buffers.SearchValues.Create("([{-\u2013\u2014");
+
     // Words that mark a bracket group or " - " suffix as version information rather than part of the name.
     private static readonly HashSet<string> VersionWords = new(StringComparer.Ordinal)
     {
@@ -81,6 +83,13 @@ public static class TitleCleaner
         if (string.IsNullOrWhiteSpace(raw))
         {
             return new CleanTitle(string.Empty, TrackTags.None, null, Array.Empty<string>());
+        }
+
+        if (raw.AsSpan().IndexOfAny(Decoration) < 0 && FindInlineFeat(raw) < 0)
+        {
+            // Plain title: nothing to strip.
+            var plain = TextNorm.Normalize(raw);
+            return new CleanTitle(plain, TrackTags.None, ExtractNumbers(plain), Array.Empty<string>());
         }
 
         var featured = new List<string>(0);

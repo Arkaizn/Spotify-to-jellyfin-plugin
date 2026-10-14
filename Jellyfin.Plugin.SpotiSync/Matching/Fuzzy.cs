@@ -12,6 +12,9 @@ public static class Fuzzy
 {
     private const int StackLimit = 256;
 
+    [ThreadStatic]
+    private static ulong[]? _asciiMasks;
+
     /// <summary>
     /// Normalized Levenshtein similarity where a substitution costs 2 (insert + delete), i.e.
     /// <c>1 - dist / (len(a) + len(b))</c>. Same definition as <c>Levenshtein.ratio</c>.
@@ -203,8 +206,9 @@ public static class Fuzzy
 
     private static int LcsBitParallel(ReadOnlySpan<char> pattern, ReadOnlySpan<char> text)
     {
-        // Match masks: ASCII via a direct table, anything else via a small linear list.
-        Span<ulong> ascii = stackalloc ulong[128];
+        // Match masks: ASCII via a reusable per-thread table (reset after use, so no 1 KB clear
+        // per call), anything else via a small linear list.
+        var ascii = _asciiMasks ??= new ulong[128];
         Span<char> otherChars = stackalloc char[64];
         Span<ulong> otherMasks = stackalloc ulong[64];
         int otherCount = 0;
@@ -248,6 +252,14 @@ public static class Fuzzy
 
             ulong u = v & m;
             v = (v + u) | (v - u);
+        }
+
+        foreach (char c in pattern)
+        {
+            if (c < 128)
+            {
+                ascii[c] = 0;
+            }
         }
 
         ulong lenMask = pattern.Length == 64 ? ~0UL : (1UL << pattern.Length) - 1;
