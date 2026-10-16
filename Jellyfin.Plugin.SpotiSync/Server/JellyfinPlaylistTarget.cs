@@ -80,6 +80,10 @@ public sealed class JellyfinPlaylistTarget : IPlaylistTarget
             : null;
 
     /// <inheritdoc />
+    public Task RenameAsync(Guid playlistId, string name, Guid ownerId, CancellationToken ct)
+        => _playlists.UpdatePlaylist(new PlaylistUpdateRequest { Id = playlistId, UserId = ownerId, Name = name });
+
+    /// <inheritdoc />
     public async Task<Guid> CreateAsync(string name, Guid ownerId, IReadOnlyList<Guid> items, CancellationToken ct)
     {
         var result = await _playlists.CreatePlaylist(new PlaylistCreationRequest

@@ -36,18 +36,22 @@ can still sync, without connecting an account at all:
   `Playlist2.json`, …, plus `YourLibrary.json` for liked songs) with **Import Spotify data**.
   No song limit, but updates need a new export.
 
-**More than 100 songs without Premium:** open a playlist on the SpotiSync page and set
-*Jellyfin playlist* to the same name on several Spotify playlists. They are combined into that one
-Jellyfin playlist, in name order ("Rock 2" before "Rock 10"):
+**Jellyfin playlists built from several Spotify playlists:** on the *Playlists* tab every entry
+is one Jellyfin playlist. Create one (name + Mirror / Add only), open it and add its sources: public
+links, imported files or playlists of your connected account. The songs of all sources are combined
+in the order shown (↑ ↓ to change it), each song once. The song list shows where every song comes
+from, in tabs *In Jellyfin*, *Duplicates (skipped)*, *Need a look*, *Not found* and *Ignored*.
 
-- *Parts:* keep "Rock 1", "Rock 2", … (up to 100 songs each) public on Spotify, all with Jellyfin
-  playlist "Rock", in *Mirror* mode. Jellyfin's "Rock" mirrors all parts.
-- *Inbox:* a small public "Rock inbox" playlist in *Add only* mode with Jellyfin playlist "Rock".
-  Add new songs to the inbox on your phone; once synced you can remove them from the inbox again,
-  Jellyfin keeps them. Seed the big playlist once with **Import Spotify data** (also targeting "Rock").
+- *More than 100 songs without Premium:* keep "Rock 1", "Rock 2", … (up to 100 songs each) public on
+  Spotify and add all of them to one Jellyfin playlist "Rock".
+- *Inbox:* add a small public "Rock inbox" playlist to a Jellyfin playlist in *Add only* mode. Once a
+  song is synced you can remove it from the inbox on your phone; Jellyfin keeps it. Seed the
+  playlist once with **Import Spotify data**.
+- If a source can't be read during a sync, the playlist only gains songs that time, never loses any.
+- Renaming the entry renames the Jellyfin playlist; deleting it keeps the Jellyfin playlist.
 
-If one part can't be read during a sync, the combined playlist only gains songs that time, it
-never loses any.
+Older setups (playlists combined through a shared "Jellyfin playlist" name) are converted
+automatically.
 
 Both kinds of playlists get the same matching, overrides and missing lists. The × next to them
 removes them from SpotiSync (the Jellyfin playlist stays).

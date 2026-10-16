@@ -103,6 +103,14 @@ public interface IPlaylistTarget
     /// <returns>The key.</returns>
     string? GetSongKey(Guid itemId);
 
+    /// <summary>Renames a playlist.</summary>
+    /// <param name="playlistId">Playlist id.</param>
+    /// <param name="name">New name.</param>
+    /// <param name="ownerId">Owner.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task.</returns>
+    Task RenameAsync(Guid playlistId, string name, Guid ownerId, CancellationToken ct);
+
     /// <summary>Creates a playlist.</summary>
     /// <param name="name">Name.</param>
     /// <param name="ownerId">Owner.</param>
