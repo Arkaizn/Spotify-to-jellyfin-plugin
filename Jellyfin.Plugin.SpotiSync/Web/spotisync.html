@@ -128,6 +128,7 @@
   <div class="ss-tools">
     <button type="button" class="ss-btn" id="ssAcceptAll">Accept all suggestions</button>
     <button type="button" class="ss-btn" id="ssMissing">Copy missing links</button>
+    <button type="button" class="ss-btn" id="ssDedupeNow" title="Remove songs that are in the Jellyfin playlist more than once (keeps the first)">Remove duplicates now</button>
     <span class="ss-grow"></span>
     <input id="ssTFilter" class="ss-in" style="max-width:16em" type="search" placeholder="Filter songs" autocomplete="off">
   </div>
@@ -156,6 +157,8 @@
     <select id="ssOwner" class="ss-in"></select>
     <label for="ssMode">Mode for new playlists</label>
     <select id="ssMode" class="ss-in"><option value="mirror">Mirror (Spotify order, removes songs that left)</option><option value="add">Add only (never removes or reorders)</option></select>
+    <label style="font-weight:normal;display:flex;gap:.5em;align-items:center"><input type="checkbox" id="ssDedupe"> Remove duplicate songs</label>
+    <div class="fd">Each song is put in a Jellyfin playlist only once (same title, main artist and version; live or remix versions count as different). The copy that came first keeps its place.</div>
     <label for="ssPrefix">Jellyfin playlist name prefix (optional)</label>
     <input id="ssPrefix" class="ss-in" autocomplete="off">
     <div class="fd">An existing Jellyfin playlist with the same name is taken over.</div>
@@ -301,7 +304,8 @@ function renderList() {
     var readable = e.readable;
     var sub = readable
       ? (e.total || 0) + ' songs' + (e.ownerName ? ' &middot; ' + esc(e.ownerName) : '') + (e.collab ? ' &middot; collaborative' : '') +
-        (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + (e.matched || 0) + ' in Jellyfin' : '') +
+        (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + ((e.matched || 0) - (e.duplicates || 0)) + ' in Jellyfin' : '') +
+        (e.duplicates ? ' &middot; ' + e.duplicates + ' duplicate' + (e.duplicates === 1 ? '' : 's') : '') +
         (e.lastSync ? ' &middot; synced ' + esc(new Date(e.lastSync).toLocaleString()) : '')
       : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on. Add it by its public link instead.';
     var tgt = e.target ? '<span class="ss-src" title="Combined into this Jellyfin playlist">&rarr; ' + esc(e.target) + '</span>' : '';
@@ -390,7 +394,7 @@ function drawRows(force) {
       '<div class="s">' + esc((t.artists || []).join(', ')) + (t.album ? ' &middot; ' + esc(t.album) : '') + '</div></div>';
     var jf = '<div style="min-width:0">';
     if (st === ST.M || st === ST.R) {
-      jf += '<div class="t">' + esc(t.text || '') + '</div><div class="s">' + (t.ov ? 'chosen manually' : Math.round((t.score || 0) * 100) + '% match' + (st === ST.R ? ' (suggestion)' : '')) + '</div>';
+      jf += '<div class="t">' + esc(t.text || '') + '</div><div class="s">' + (t.dup ? '<span style="color:var(--ss-warn)">same song as #' + t.dup + ', added once</span>' : t.ov ? 'chosen manually' : Math.round((t.score || 0) * 100) + '% match' + (st === ST.R ? ' (suggestion)' : '')) + '</div>';
     } else if (st === ST.I) {
       jf += '<div class="s">ignored</div>';
     } else {
@@ -451,6 +455,7 @@ function renderSettings() {
   Q('#ssPublic').value = s.publicUrl || '';
   Q('#ssPrefix').value = s.namePrefix || '';
   Q('#ssMode').value = s.defaultMode === 'add' ? 'add' : 'mirror';
+  Q('#ssDedupe').checked = !!s.removeDuplicates;
   var r = s.redirectUri || '';
   Q('#ssRedirect').textContent = r;
   Q('#ssRedirWarn').textContent = /^http:\/\/(?!127\.0\.0\.1|\[::1\])/.test(r) ? 'This is not https: Spotify will reject it. Set the public https URL of your server above (e.g. behind a reverse proxy).' : '';
@@ -463,7 +468,7 @@ function renderSettings() {
 function saveSettings() {
   var body = {
     clientId: Q('#ssClient').value.trim(), publicUrl: Q('#ssPublic').value.trim(), namePrefix: Q('#ssPrefix').value,
-    defaultMode: Q('#ssMode').value, ownerUserId: Q('#ssOwner').value || '00000000-0000-0000-0000-000000000000'
+    defaultMode: Q('#ssMode').value, removeDuplicates: Q('#ssDedupe').checked, ownerUserId: Q('#ssOwner').value || '00000000-0000-0000-0000-000000000000'
   };
   return post('Settings', body).then(function () { delete cache.Settings; return loadSettings(); }).then(function () { toast('Settings saved'); });
 }
@@ -564,6 +569,9 @@ function copyMissing(id) {
     copy(txt, txt.trim().split('\n').length + ' links');
   }, fail);
 }
+Q('#ssDedupeNow').addEventListener('click', function () {
+  post('Dedupe').then(function () { toast('Removing duplicates…'); startPolling(8000); }, fail);
+});
 Q('#ssMissing').addEventListener('click', function () { copyMissing(detailId); });
 Q('#ssAllMissing').addEventListener('click', function () { copyMissing(null); });
 Q('#ssSync').addEventListener('click', function () { post('Sync', { mode: 'full' }).then(function () { toast('Sync started'); startPolling(8000); }, fail); });

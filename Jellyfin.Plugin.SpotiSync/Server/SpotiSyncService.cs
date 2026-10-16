@@ -43,7 +43,7 @@ public sealed class SpotiSyncService : IDisposable
             new JellyfinPlaylistTarget(playlistManager, libraryManager),
             Store,
             Cache,
-            () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode),
+            () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode, Config.RemoveDuplicates),
             loggerFactory.CreateLogger<SyncEngine>(),
             Public = new SpotifyPublicClient(httpFactory, NamedClient.Default));
     }

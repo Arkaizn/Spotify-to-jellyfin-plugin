@@ -79,6 +79,7 @@ public class SpotiSyncController : ControllerBase
             PublicUrl = cfg.PublicUrl,
             DefaultMode = cfg.DefaultMode,
             NamePrefix = cfg.NamePrefix,
+            RemoveDuplicates = cfg.RemoveDuplicates,
             RedirectUri = RedirectUri(),
             Connected = !string.IsNullOrEmpty(auth.RefreshToken),
             SpotifyUser = catalog.MeName ?? catalog.MeId,
@@ -106,6 +107,7 @@ public class SpotiSyncController : ControllerBase
         cfg.PublicUrl = (dto.PublicUrl ?? string.Empty).Trim().TrimEnd('/');
         cfg.DefaultMode = SyncModes.Normalize(dto.DefaultMode);
         cfg.NamePrefix = dto.NamePrefix ?? string.Empty;
+        cfg.RemoveDuplicates = dto.RemoveDuplicates;
         plugin.SaveConfiguration();
         return await GetSettings().ConfigureAwait(false);
     }
@@ -419,6 +421,16 @@ public class SpotiSyncController : ControllerBase
             }
         }).ConfigureAwait(false);
         return Content(n.ToString(CultureInfo.InvariantCulture), "text/plain");
+    }
+
+    /// <summary>Removes duplicate songs from the synced Jellyfin playlists (keeps the first copy) with a quick rematch.</summary>
+    /// <returns>Accepted.</returns>
+    [HttpPost("Dedupe")]
+    public ActionResult Dedupe()
+    {
+        _service.Engine.RequestDedupe();
+        QueueRun(rematch: true);
+        return Accepted();
     }
 
     /// <summary>Plain-text list of Spotify links that are not in the library.</summary>

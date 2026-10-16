@@ -73,6 +73,9 @@ public sealed class TrackState
     /// <summary>Gets or sets a display text for <see cref="Item"/>: "Title — Artist · Album".</summary>
     public string? Text { get; set; }
 
+    /// <summary>Gets or sets the 1-based position of the first track with the same song (0 = not a duplicate).</summary>
+    public int Dup { get; set; }
+
     /// <summary>Gets or sets a value indicating whether the status comes from a manual override.</summary>
     public bool Ov { get; set; }
 
@@ -173,6 +176,9 @@ public sealed class CatalogEntry
 
     /// <summary>Gets or sets the not-found count.</summary>
     public int Missing { get; set; }
+
+    /// <summary>Gets or sets the number of tracks that are the same song as an earlier one (written once).</summary>
+    public int Duplicates { get; set; }
 
     /// <summary>Gets or sets the ignored count.</summary>
     public int Ignored { get; set; }
