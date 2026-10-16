@@ -132,6 +132,13 @@ internal sealed class FakeTarget : IPlaylistTarget
 
     public string? GetSongKey(Guid itemId) => Keys.TryGetValue(itemId, out var k) ? k : null;
 
+    public Task RenameAsync(Guid playlistId, string name, Guid ownerId, CancellationToken ct)
+    {
+        Writes++;
+        Playlists[playlistId] = (name, Playlists[playlistId].Items);
+        return Task.CompletedTask;
+    }
+
     public Task<Guid> CreateAsync(string name, Guid ownerId, IReadOnlyList<Guid> items, CancellationToken ct)
     {
         Writes++;

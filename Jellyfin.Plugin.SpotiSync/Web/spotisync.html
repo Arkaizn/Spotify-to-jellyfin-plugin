@@ -13,7 +13,7 @@
 .ss-run .ss-bar{flex:1;height:6px}
 .ss-bar{background:var(--ss-div);border-radius:3px;overflow:hidden;display:flex;height:8px}
 .ss-bar i{display:block;height:100%;background:var(--ss-acc);transition:width .3s}
-.ss-bar .m{background:var(--ss-ok)}.ss-bar .r{background:var(--ss-warn)}.ss-bar .x{background:var(--ss-err)}.ss-bar .g{background:var(--ss-ign)}
+.ss-bar .d{background:#8e7cc3}.ss-bar .m{background:var(--ss-ok)}.ss-bar .r{background:var(--ss-warn)}.ss-bar .x{background:var(--ss-err)}.ss-bar .g{background:var(--ss-ign)}
 .ss-note{padding:.8em 1em;border-radius:6px;background:var(--ss-paper);border-left:4px solid var(--ss-warn);margin:0 0 1em}
 .ss-tabs{display:flex;gap:.2em;border-bottom:1px solid var(--ss-div);margin:0 0 1em;overflow-x:auto;scrollbar-width:none}
 .ss-tabs button{background:none;border:0;color:var(--ss-mut);padding:.7em 1em;font:inherit;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
@@ -37,6 +37,13 @@
 .ss-hint{font-size:.8em;color:var(--ss-mut);margin:0 0 1em}
 .ss-src{font-size:.72em;padding:.05em .45em;border-radius:.8em;border:1px solid currentColor;margin-left:.5em;vertical-align:middle;color:var(--ss-mut)}
 .ss-x{background:none;border:0;color:var(--ss-mut);cursor:pointer;font-size:1.1em;padding:0 .2em}
+.ss-box{border:1px solid var(--ss-div);border-radius:6px;padding:.7em .9em;margin:0 0 1em}
+.ss-boxh{font-weight:500;margin-bottom:.4em}
+.ss-srow{display:flex;align-items:center;gap:.6em;padding:.35em 0;border-bottom:1px solid var(--ss-div)}
+.ss-srow:last-child{border-bottom:0}
+.ss-srow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-srow .sb{font-size:.8em;color:var(--ss-mut)}
+.ss-srow button{background:none;border:1px solid var(--ss-div);color:var(--ss-fg);border-radius:4px;cursor:pointer;padding:.15em .5em}
 .ss-sw{position:relative;width:38px;height:22px;display:inline-block}
 .ss-sw input{opacity:0;width:0;height:0}
 .ss-sw span{position:absolute;inset:0;border-radius:11px;background:var(--ss-div);cursor:pointer;transition:.2s}
@@ -99,15 +106,14 @@
 </div>
 
 <section id="ssPl">
-  <form class="ss-add" id="ssAddForm">
-    <input id="ssAddUrl" class="ss-in" type="url" placeholder="Paste a public Spotify playlist link (no account or Premium needed)" autocomplete="off">
-    <button type="submit" class="ss-btn" id="ssAddBtn">Add playlist</button>
-    <label class="ss-btn" title="Playlist1.json / YourLibrary.json from Spotify's &quot;Download your data&quot;">Import Spotify data<input type="file" id="ssImport" accept=".json,application/json" multiple hidden></label>
+  <form class="ss-add" id="ssNewForm">
+    <input id="ssNewName" class="ss-in" placeholder="New Jellyfin playlist, e.g. Rock" autocomplete="off">
+    <select id="ssNewMode" class="ss-in" style="width:auto;flex:0 0 auto"><option value="mirror">Mirror</option><option value="add">Add only</option></select>
+    <button type="submit" class="ss-btn">Create</button>
   </form>
-  <div class="fd ss-hint">Public links: Spotify only shows the first 100 songs of a playlist this way. For longer playlists import the files from Spotify &rarr; Account &rarr; Privacy &rarr; <i>Download your data</i>.</div>
+  <div class="fd ss-hint">Each entry is one Jellyfin playlist. Open it to add the Spotify playlists it is built from: public links (no account needed, first 100 songs each), imported Spotify data, or playlists of your connected account.</div>
   <div class="ss-tools">
-    <input id="ssFilter" class="ss-in ss-grow" type="search" placeholder="Filter playlists" autocomplete="off">
-    <label><input type="checkbox" id="ssOnlyOn"> Only synced</label>
+    <input id="ssFilter" class="ss-in ss-grow" type="search" placeholder="Filter" autocomplete="off">
     <button type="button" class="ss-link" id="ssAllMissing">Copy all missing links</button>
   </div>
   <div id="ssList" class="ss-list"></div>
@@ -115,16 +121,22 @@
 
 <section id="ssDet" class="hide">
   <div class="ss-dh">
-    <button type="button" class="ss-btn" id="ssBack">&larr; Playlists</button>
-    <h3 id="ssDName"></h3>
+    <button type="button" class="ss-btn" id="ssBack">&larr; Back</button>
+    <input id="ssDName" class="ss-in" style="flex:1;min-width:10em;font-size:1.15em;font-weight:500" title="Jellyfin playlist name (Enter to rename)" autocomplete="off">
     <select id="ssDMode" class="ss-in" style="width:auto"><option value="mirror">Mirror (order + removals)</option><option value="add">Add only</option></select>
     <label class="ss-sw" title="Sync this playlist"><input type="checkbox" id="ssDOn"><span></span></label>
+    <button type="button" class="ss-x" id="ssDelSync" title="Delete this sync (the Jellyfin playlist stays)">&#128465;</button>
   </div>
-  <form class="ss-add" id="ssTargetForm" style="margin-bottom:.2em">
-    <input id="ssTarget" class="ss-in" placeholder="Jellyfin playlist (empty = same name as on Spotify)" autocomplete="off">
-    <button type="submit" class="ss-btn">Save</button>
-  </form>
-  <div class="ss-hint">Give several Spotify playlists the same Jellyfin playlist name to combine them, e.g. &ldquo;Rock 1&rdquo; + &ldquo;Rock 2&rdquo; &rarr; &ldquo;Rock&rdquo; (gets past the 100-song limit of public links). In <i>Add only</i> mode Jellyfin keeps every song it has seen, so you can clear old songs out of a small Spotify &ldquo;inbox&rdquo; playlist.</div>
+  <div class="ss-box">
+    <div class="ss-boxh">Built from <span id="ssSrcCount"></span></div>
+    <div id="ssSources"></div>
+    <form class="ss-add" id="ssAddForm" style="margin-top:.6em">
+      <input id="ssAddUrl" class="ss-in" type="url" placeholder="Add a public Spotify playlist link" autocomplete="off">
+      <button type="submit" class="ss-btn" id="ssAddBtn">Add link</button>
+      <select id="ssPick" class="ss-in" style="width:auto;max-width:16em;flex:0 1 auto"></select>
+      <label class="ss-btn" title="Playlist1.json / YourLibrary.json from Spotify's &quot;Download your data&quot;">Import Spotify data<input type="file" id="ssImport" accept=".json,application/json" multiple hidden></label>
+    </form>
+  </div>
   <div class="ss-tools">
     <button type="button" class="ss-btn" id="ssAcceptAll">Accept all suggestions</button>
     <button type="button" class="ss-btn" id="ssMissing">Copy missing links</button>
@@ -134,9 +146,10 @@
   </div>
   <div class="ss-tabs" id="ssTTabs">
     <button type="button" data-t="1" class="on">In Jellyfin<b></b></button>
-    <button type="button" data-t="2">Need a look<b></b></button>
-    <button type="button" data-t="3">Not found<b></b></button>
-    <button type="button" data-t="4">Ignored<b></b></button>
+    <button type="button" data-t="2">Duplicates (skipped)<b></b></button>
+    <button type="button" data-t="3">Need a look<b></b></button>
+    <button type="button" data-t="4">Not found<b></b></button>
+    <button type="button" data-t="5">Ignored<b></b></button>
   </div>
   <div class="ss-vp" id="ssVp"><div id="ssSpacer"></div></div>
 </section>
@@ -268,7 +281,7 @@ function renderStatus(s) {
 function refreshData() {
   return getJson('Playlists').then(function (c) {
     catalog = c; renderList(); if (settings) { renderNotice(); }
-    if (detailId) { return loadDetail(detailId, true); }
+    if (detailId) { renderDetailHead(); return loadDetail(detailId, true); }
   }, fail);
 }
 function loadSettings() {
@@ -276,9 +289,7 @@ function loadSettings() {
 }
 function renderNotice() {
   var n = [], s = settings || {};
-  var hasOwn = catalog && catalog.playlists && catalog.playlists.some(function (p) { return p.source; });
-  if (!s.clientId && !hasOwn) { n.push('Paste the link of a public Spotify playlist below to get started, or set up a Spotify app under Settings (needs Premium on the app owner).'); }
-  else if (!s.connected && !(catalog && catalog.playlists && catalog.playlists.some(function (p) { return p.source; }))) { n.push('Spotify is not connected. Connect it under Settings, or simply paste the link of a public playlist below (no account or Premium needed).'); }
+  if (!(catalog && catalog.syncs && catalog.syncs.length)) { n.push('Create a Jellyfin playlist below and add public Spotify playlist links to it. No Spotify account or Premium is needed for that.'); }
   if (!s.ownerUserId || /^0{8}-/.test(s.ownerUserId)) { n.push('Choose the Jellyfin user the playlists belong to under Settings.'); }
   if (s.rateLimitedUntil) { n.push('Spotify asked us to slow down until ' + esc(new Date(s.rateLimitedUntil).toLocaleString()) + '. Cached track lists are used until then.'); }
   Q('#ssNotice').innerHTML = n.map(function (t) { return '<div class="ss-note">' + t + '</div>'; }).join('');
@@ -287,73 +298,86 @@ function renderNotice() {
   c.textContent = s.connected ? 'Spotify: ' + (s.spotifyUser || 'connected') : 'Spotify: not connected';
 }
 
-// ---------------------------------------------------------------- playlist list
-function bar(e) {
-  var t = (e.matched || 0) + (e.review || 0) + (e.missing || 0) + (e.ignored || 0);
+// ---------------------------------------------------------------- syncs (Jellyfin playlists)
+function bar(x) {
+  var t = (x.inJellyfin || 0) + (x.duplicates || 0) + (x.review || 0) + (x.missing || 0) + (x.ignored || 0);
   if (!t) { return '<div class="ss-bar"></div>'; }
   function seg(c, n) { return n ? '<i class="' + c + '" style="width:' + (100 * n / t) + '%"></i>' : ''; }
-  return '<div class="ss-bar" title="' + (e.matched || 0) + ' in Jellyfin, ' + (e.review || 0) + ' need a look, ' + (e.missing || 0) + ' not found, ' + (e.ignored || 0) + ' ignored">' +
-    seg('m', e.matched) + seg('r', e.review) + seg('x', e.missing) + seg('g', e.ignored) + '</div>';
+  return '<div class="ss-bar" title="' + (x.inJellyfin || 0) + ' in Jellyfin, ' + (x.duplicates || 0) + ' duplicates skipped, ' + (x.review || 0) + ' need a look, ' + (x.missing || 0) + ' not found, ' + (x.ignored || 0) + ' ignored">' +
+    seg('m', x.inJellyfin) + seg('d', x.duplicates) + seg('r', x.review) + seg('x', x.missing) + seg('g', x.ignored) + '</div>';
 }
+function entry(id) { return catalog && catalog.playlists && catalog.playlists.find(function (x) { return x.id === id; }); }
+function syncOf(id) { return catalog && catalog.syncs && catalog.syncs.find(function (x) { return x.id === id; }); }
+function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
 function renderList() {
-  var list = (catalog && catalog.playlists) || [];
-  var f = Q('#ssFilter').value.trim().toLowerCase(), only = Q('#ssOnlyOn').checked;
-  var html = list.filter(function (e) {
-    return (!only || e.enabled) && (!f || e.name.toLowerCase().indexOf(f) >= 0);
-  }).map(function (e) {
-    var readable = e.readable;
-    var sub = readable
-      ? (e.total || 0) + ' songs' + (e.ownerName ? ' &middot; ' + esc(e.ownerName) : '') + (e.collab ? ' &middot; collaborative' : '') +
-        (e.enabled && (e.matched || e.review || e.missing) ? ' &middot; ' + ((e.matched || 0) - (e.duplicates || 0)) + ' in Jellyfin' : '') +
-        (e.duplicates ? ' &middot; ' + e.duplicates + ' duplicate' + (e.duplicates === 1 ? '' : 's') : '') +
-        (e.lastSync ? ' &middot; synced ' + esc(new Date(e.lastSync).toLocaleString()) : '')
-      : 'by ' + esc(e.ownerName || 'someone else') + ' &middot; Spotify only returns songs of playlists you own or collaborate on. Add it by its public link instead.';
-    var tgt = e.target ? '<span class="ss-src" title="Combined into this Jellyfin playlist">&rarr; ' + esc(e.target) + '</span>' : '';
-    var src = e.source === 'public' ? '<span class="ss-src">public link</span>' : e.source === 'file' ? '<span class="ss-src">imported</span>' : '';
-    var rm = e.source ? ' <button type="button" class="ss-x" data-rm="1" title="Remove from SpotiSync (the Jellyfin playlist stays)">&times;</button>' : '';
-    var cap = e.capped ? '<div class="ss-sub" style="color:var(--ss-warn)">Spotify shows only the first 100 songs of public playlists. Import your Spotify data for the rest.</div>' : '';
-    return '<div data-id="' + esc(e.id) + '" class="' + (readable ? '' : 'ss-dis') + '">' +
-      (e.image ? '<img loading="lazy" alt="" src="' + esc(e.image) + '">' : '<div class="ss-cov"></div>') +
-      '<div style="min-width:0"><div class="ss-name"><span data-open="1">' + esc(e.name) + '</span>' + src + tgt + rm + '</div><div class="ss-sub">' + sub + '</div>' + cap +
-      (e.error ? '<div class="ss-sub ss-err">' + esc(e.error) + '</div>' : '') + '</div>' +
-      bar(e) +
-      '<select data-mode="1"' + (readable ? '' : ' disabled') + '><option value="mirror"' + (e.mode !== 'add' ? ' selected' : '') + '>Mirror</option><option value="add"' + (e.mode === 'add' ? ' selected' : '') + '>Add only</option></select>' +
-      '<label class="ss-sw" title="' + (readable ? 'Sync this playlist' : 'Not available') + '"><input type="checkbox" data-on="1"' + (e.enabled ? ' checked' : '') + (readable ? '' : ' disabled') + '><span></span></label>' +
-      '</div>';
+  var list = (catalog && catalog.syncs) || [];
+  var f = Q('#ssFilter').value.trim().toLowerCase();
+  var html = list.filter(function (x) { return !f || x.name.toLowerCase().indexOf(f) >= 0; }).map(function (x) {
+    var names = (x.sources || []).map(function (id) { var e = entry(id); return e ? e.name : '?'; });
+    var cover = (x.sources || []).map(entry).filter(function (e) { return e && e.image; })[0];
+    var sub = plural((x.sources || []).length, 'source') + (names.length ? ': ' + esc(names.slice(0, 4).join(', ')) + (names.length > 4 ? ', …' : '') : '') +
+      (x.total ? ' &middot; ' + (x.inJellyfin || 0) + ' in Jellyfin' : '') +
+      (x.duplicates ? ' &middot; ' + plural(x.duplicates, 'duplicate') + ' skipped' : '') +
+      (x.lastSync ? ' &middot; synced ' + esc(new Date(x.lastSync).toLocaleString()) : '');
+    return '<div data-id="' + esc(x.id) + '"' + (x.paused ? ' class="ss-dis"' : '') + '>' +
+      (cover ? '<img loading="lazy" alt="" src="' + esc(cover.image) + '">' : '<div class="ss-cov"></div>') +
+      '<div style="min-width:0"><div class="ss-name" data-open="1">' + esc(x.name) + '</div><div class="ss-sub">' + sub + '</div>' +
+      (x.error ? '<div class="ss-sub ss-err">' + esc(x.error) + '</div>' : '') + '</div>' +
+      bar(x) +
+      '<select data-mode="1"><option value="mirror"' + (x.mode !== 'add' ? ' selected' : '') + '>Mirror</option><option value="add"' + (x.mode === 'add' ? ' selected' : '') + '>Add only</option></select>' +
+      '<label class="ss-sw" title="Sync this playlist"><input type="checkbox" data-on="1"' + (x.paused ? '' : ' checked') + '><span></span></label></div>';
   }).join('');
-  Q('#ssList').innerHTML = html || '<div class="ss-empty">' + (list.length ? 'No playlist matches the filter.' : 'No playlists yet. Connect Spotify and press &ldquo;Sync now&rdquo;.') + '</div>';
+  Q('#ssList').innerHTML = html || '<div class="ss-empty">' + (list.length ? 'Nothing matches the filter.' : 'No Jellyfin playlists yet. Create one above, then add Spotify playlists to it.') + '</div>';
 }
-function patchPlaylist(id, body) {
-  return post('Playlists/' + encodeURIComponent(id), body).then(function () {
-    var e = entry(id);
-    if (e) { if (body.enabled != null) { e.enabled = body.enabled; } if (body.mode) { e.mode = body.mode; } }
-    if (body.target == null) { toast(body.enabled === true ? 'Will be synced on the next run' : 'Saved'); }
+function editSync(id, body, msg) {
+  return post('Syncs/' + encodeURIComponent(id), body).then(function (r) { return r.json(); }).then(function (x) {
+    var i = catalog.syncs.findIndex(function (y) { return y.id === id; }); if (i >= 0) { catalog.syncs[i] = x; }
+    if (msg) { toast(msg); }
+    renderList(); startPolling(8000);
+    return x;
   }, fail);
 }
 
-// ---------------------------------------------------------------- playlist detail (virtualized)
-function entry(id) { return catalog && catalog.playlists && catalog.playlists.find(function (x) { return x.id === id; }); }
+// ---------------------------------------------------------------- sync detail (virtualized combined song list)
 function openDetail(id) {
   detailId = id; tab = 1; detail = null;
-  var e = entry(id);
-  Q('#ssDName').textContent = e ? e.name : id;
-  Q('#ssDMode').value = e && e.mode === 'add' ? 'add' : 'mirror';
-  Q('#ssDOn').checked = !!(e && e.enabled);
   Q('#ssTFilter').value = '';
-  Q('#ssTarget').value = (e && e.target) || '';
-  show('det');
+  show('det'); renderDetailHead();
   rows = []; drawRows(true);
   loadDetail(id, false);
 }
+function renderDetailHead() {
+  var x = syncOf(detailId); if (!x) { return; }
+  if (document.activeElement !== Q('#ssDName')) { Q('#ssDName').value = x.name; }
+  Q('#ssDMode').value = x.mode === 'add' ? 'add' : 'mirror';
+  Q('#ssDOn').checked = !x.paused;
+  var srcs = (x.sources || []);
+  Q('#ssSrcCount').textContent = srcs.length ? plural(srcs.length, 'Spotify playlist') + ' (in this order)' : 'no Spotify playlist yet: add one below';
+  Q('#ssSources').innerHTML = srcs.map(function (id, i) {
+    var e = entry(id) || { name: id };
+    var kind = e.source === 'public' ? 'public link' : e.source === 'file' ? 'imported' : 'Spotify account';
+    return '<div class="ss-srow" data-src="' + esc(id) + '"><div class="nm">' + esc(e.name) + ' <span class="ss-src">' + kind + '</span>' +
+      '<div class="sb">' + (e.total || 0) + ' songs' + (e.capped ? ' &middot; <span style="color:var(--ss-warn)">only the first 100 are visible on public links</span>' : '') +
+      (e.error ? ' &middot; <span class="ss-err" style="color:var(--ss-err)">' + esc(e.error) + '</span>' : '') + '</div></div>' +
+      '<button type="button" data-mv="up" title="Move up"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>' +
+      '<button type="button" data-mv="down" title="Move down"' + (i === srcs.length - 1 ? ' disabled' : '') + '>&darr;</button>' +
+      '<button type="button" data-rmsrc="1" title="Remove from this playlist">&times;</button></div>';
+  }).join('');
+  var opts = ((catalog && catalog.playlists) || []).filter(function (e) { return e.readable && srcs.indexOf(e.id) < 0; });
+  Q('#ssPick').innerHTML = '<option value="">' + (opts.length ? 'or add a known playlist…' : 'no other known playlists') + '</option>' + opts.map(function (e) {
+    var kind = e.source === 'public' ? 'link' : e.source === 'file' ? 'imported' : 'account';
+    return '<option value="' + esc(e.id) + '">' + esc(e.name) + ' (' + kind + ', ' + (e.total || 0) + ')</option>';
+  }).join('');
+}
 function loadDetail(id, keepScroll) {
-  return getJson('Playlists/' + encodeURIComponent(id) + '/Tracks').then(function (d) {
+  return getJson('Syncs/' + encodeURIComponent(id) + '/Tracks').then(function (d) {
     if (detailId !== id) { return; }
     detail = d; buildRows(keepScroll);
   }, fail);
 }
-function tabOf(t) { var s = t.st || 0; return s === ST.M ? 1 : s === ST.R ? 2 : s === ST.I ? 4 : 3; }
+function tabOf(t) { var s = t.st || 0; return s === ST.M ? (t.dupOf ? 2 : 1) : s === ST.R ? 3 : s === ST.I ? 5 : 4; }
 function buildRows(keepScroll) {
-  var tracks = (detail && detail.tracks) || [], counts = [0, 0, 0, 0, 0];
+  var tracks = (detail && detail.tracks) || [], counts = [0, 0, 0, 0, 0, 0];
   var f = Q('#ssTFilter').value.trim().toLowerCase();
   rows = [];
   for (var i = 0; i < tracks.length; i++) {
@@ -375,11 +399,11 @@ function buildRows(keepScroll) {
 }
 var drawn = '';
 function drawRows(force) {
-  var vp = Q('#ssVp'), tracks = (detail && detail.tracks) || [];
+  var vp = Q('#ssVp'), tracks = (detail && detail.tracks) || [], srcs = (detail && detail.sources) || [];
   if (!rows.length) {
     vp.querySelectorAll('.ss-row,.ss-empty').forEach(function (r) { r.remove(); });
     var em = document.createElement('div'); em.className = 'ss-empty';
-    em.textContent = detail ? 'Nothing here.' : 'Loading...';
+    em.textContent = detail ? (tracks.length ? 'Nothing here.' : 'No songs yet. Add a Spotify playlist above, then press Sync now.') : 'Loading...';
     vp.appendChild(em); drawn = ''; return;
   }
   var first = Math.max(0, Math.floor(vp.scrollTop / ROW) - 6);
@@ -389,12 +413,12 @@ function drawRows(force) {
   drawn = key;
   var html = '';
   for (var r = first; r < last; r++) {
-    var i = rows[r], t = tracks[i], st = t.st || 0;
+    var i = rows[r], t = tracks[i], st = t.st || 0, from = srcs[t.src] ? srcs[t.src].name : '';
     var sp = '<div style="min-width:0"><div class="t">' + (t.id ? '<a class="ss-link" target="_blank" rel="noopener" href="https://open.spotify.com/track/' + esc(t.id) + '">' + esc(t.title) + '</a>' : esc(t.title)) + '</div>' +
-      '<div class="s">' + esc((t.artists || []).join(', ')) + (t.album ? ' &middot; ' + esc(t.album) : '') + '</div></div>';
+      '<div class="s">' + esc((t.artists || []).join(', ')) + (srcs.length > 1 ? ' &middot; from ' + esc(from) : (t.album ? ' &middot; ' + esc(t.album) : '')) + '</div></div>';
     var jf = '<div style="min-width:0">';
     if (st === ST.M || st === ST.R) {
-      jf += '<div class="t">' + esc(t.text || '') + '</div><div class="s">' + (t.dup ? '<span style="color:var(--ss-warn)">same song as #' + t.dup + ', added once</span>' : t.ov ? 'chosen manually' : Math.round((t.score || 0) * 100) + '% match' + (st === ST.R ? ' (suggestion)' : '')) + '</div>';
+      jf += '<div class="t">' + esc(t.text || '') + '</div><div class="s">' + (t.dupOf ? '<span style="color:#8e7cc3">same song as #' + t.dupOf + (tracks[t.dupOf - 1] && srcs.length > 1 ? ' (' + esc((srcs[tracks[t.dupOf - 1].src] || {}).name || '') + ')' : '') + ', skipped</span>' : t.ov ? 'chosen manually' : Math.round((t.score || 0) * 100) + '% match' + (st === ST.R ? ' (suggestion)' : '')) + '</div>';
     } else if (st === ST.I) {
       jf += '<div class="s">ignored</div>';
     } else {
@@ -414,8 +438,8 @@ function drawRows(force) {
 
 // Optimistic local update; the server applies it with a quick rematch.
 function override(i, action, item, text) {
-  var t = detail.tracks[i];
-  return post('Override', { key: t.key, action: action, item: item || null, playlist: detailId }).then(function () {
+  var t = detail.tracks[i], src = detail.sources[t.src];
+  return post('Override', { key: t.key, action: action, item: item || null, playlist: src ? src.id : null }).then(function () {
     if (action === 'ignore') { t.st = ST.I; t.ov = true; }
     else if (action === 'clear') { t.ov = false; t.st = ST.P; t.item = null; t.text = null; }
     else { t.st = ST.M; t.ov = true; if (item) { t.item = item; t.text = text; } }
@@ -494,58 +518,82 @@ function show(v) {
 
 Q('#ssMain').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b) { show(b.dataset.v); if (b.dataset.v === 'pl') { renderList(); } } });
 Q('#ssFilter').addEventListener('input', renderList);
-Q('#ssOnlyOn').addEventListener('change', renderList);
 Q('#ssList').addEventListener('click', function (ev) {
   var row = ev.target.closest('[data-id]');
-  if (row && ev.target.closest('[data-open]') && !row.classList.contains('ss-dis')) { openDetail(row.dataset.id); }
+  if (row && ev.target.closest('[data-open]')) { openDetail(row.dataset.id); }
 });
 Q('#ssList').addEventListener('change', function (ev) {
   var row = ev.target.closest('[data-id]'); if (!row) { return; }
-  if (ev.target.dataset.on) { patchPlaylist(row.dataset.id, { enabled: ev.target.checked }); }
-  if (ev.target.dataset.mode) { patchPlaylist(row.dataset.id, { mode: ev.target.value }); }
+  if (ev.target.dataset.on) { editSync(row.dataset.id, { enabled: ev.target.checked }, ev.target.checked ? 'Switched on' : 'Paused'); }
+  if (ev.target.dataset.mode) { editSync(row.dataset.id, { mode: ev.target.value }, 'Saved'); }
 });
-Q('#ssList').addEventListener('click', function (ev) {
-  var b = ev.target.closest('[data-rm]'); if (!b) { return; }
-  var row = b.closest('[data-id]');
-  ApiClient.fetch({ url: url('Playlists/' + encodeURIComponent(row.dataset.id)), type: 'DELETE' }).then(function () {
-    catalog.playlists = catalog.playlists.filter(function (p) { return p.id !== row.dataset.id; });
-    renderList(); toast('Removed (the Jellyfin playlist was kept)');
+Q('#ssNewForm').addEventListener('submit', function (ev) {
+  ev.preventDefault();
+  var name = Q('#ssNewName').value.trim(); if (!name) { return; }
+  post('Syncs', { name: name, mode: Q('#ssNewMode').value }).then(function (r) { return r.json(); }).then(function (x) {
+    Q('#ssNewName').value = '';
+    catalog.syncs = (catalog.syncs || []).concat([x]); delete cache.Playlists;
+    renderList(); openDetail(x.id);
   }, fail);
+});
+Q('#ssBack').addEventListener('click', function () { show('pl'); renderList(); });
+Q('#ssDName').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); Q('#ssDName').blur(); } });
+Q('#ssDName').addEventListener('change', function () {
+  var n = Q('#ssDName').value.trim(); if (!n) { return; }
+  editSync(detailId, { name: n }, 'Renamed; the Jellyfin playlist follows on the next sync');
+});
+Q('#ssDMode').addEventListener('change', function () { editSync(detailId, { mode: Q('#ssDMode').value }, 'Saved'); });
+Q('#ssDOn').addEventListener('change', function () { editSync(detailId, { enabled: Q('#ssDOn').checked }, Q('#ssDOn').checked ? 'Switched on' : 'Paused'); });
+Q('#ssDelSync').addEventListener('click', function () {
+  var x = syncOf(detailId);
+  if (!x || !window.confirm('Delete the sync “' + x.name + '”? The Jellyfin playlist and its songs stay as they are.')) { return; }
+  ApiClient.fetch({ url: url('Syncs/' + encodeURIComponent(detailId)), type: 'DELETE' }).then(function () {
+    catalog.syncs = catalog.syncs.filter(function (y) { return y.id !== x.id; }); delete cache.Playlists;
+    show('pl'); renderList(); toast('Deleted (the Jellyfin playlist was kept)');
+  }, fail);
+});
+function sourcesChanged(x, msg) {
+  if (x) { var i = catalog.syncs.findIndex(function (y) { return y.id === x.id; }); if (i >= 0) { catalog.syncs[i] = x; } }
+  delete cache.Playlists; if (msg) { toast(msg); }
+  refreshData(); startPolling(8000);
+}
+Q('#ssSources').addEventListener('click', function (ev) {
+  var row = ev.target.closest('[data-src]'); if (!row) { return; }
+  var src = encodeURIComponent(row.dataset.src), base = 'Syncs/' + encodeURIComponent(detailId) + '/Sources/' + src;
+  var mv = ev.target.closest('[data-mv]');
+  if (mv) { post(base + '/Move?dir=' + mv.dataset.mv).then(function (r) { return r.json(); }).then(function (x) { sourcesChanged(x); }, fail); }
+  if (ev.target.closest('[data-rmsrc]')) {
+    ApiClient.fetch({ url: url(base), type: 'DELETE' }).then(function () {
+      var x = syncOf(detailId); if (x) { x.sources = x.sources.filter(function (id) { return id !== row.dataset.src; }); }
+      sourcesChanged(null, 'Removed from this playlist');
+    }, fail);
+  }
 });
 Q('#ssAddForm').addEventListener('submit', function (ev) {
   ev.preventDefault();
   var link = Q('#ssAddUrl').value.trim(); if (!link) { return; }
   Q('#ssAddBtn').disabled = true;
-  post('Public', { url: link }).then(function (r) { return r.json(); }).then(function (e) {
-    Q('#ssAddUrl').value = '';
-    toast('Added \u201c' + e.name + '\u201d (' + (e.total || 0) + ' songs), syncing now');
-    delete cache.Playlists; refreshData(); renderNotice(); startPolling(8000);
+  post('Syncs/' + encodeURIComponent(detailId) + '/Sources', { url: link }).then(function (r) { return r.json(); }).then(function (x) {
+    Q('#ssAddUrl').value = ''; sourcesChanged(x, 'Added, syncing now');
   }, fail).then(function () { Q('#ssAddBtn').disabled = false; });
+});
+Q('#ssPick').addEventListener('change', function () {
+  var id = Q('#ssPick').value; if (!id) { return; }
+  post('Syncs/' + encodeURIComponent(detailId) + '/Sources', { entryId: id }).then(function (r) { return r.json(); }).then(function (x) { sourcesChanged(x, 'Added, syncing now'); }, fail);
 });
 Q('#ssImport').addEventListener('change', function (ev) {
   var files = Array.prototype.slice.call(ev.target.files || []), total = 0, names = 0;
   ev.target.value = '';
   files.reduce(function (p, f) {
     return p.then(function () { return f.text(); }).then(function (txt) {
-      return ApiClient.fetch({ url: url('Import'), type: 'POST', data: txt, contentType: 'application/json' });
+      return ApiClient.fetch({ url: url('Import?sync=' + encodeURIComponent(detailId)), type: 'POST', data: txt, contentType: 'application/json' });
     }).then(function (r) { return r.json(); }).then(function (res) { total += res.tracks; names += res.playlists; },
       function (e) { toast(f.name + ': ' + (e && e.status === 400 ? 'not a Spotify playlist file' : 'import failed')); });
   }, Promise.resolve()).then(function () {
-    if (names) { toast('Imported ' + names + ' playlists (' + total + ' songs). Switch on the ones to sync.'); }
-    delete cache.Playlists; refreshData(); renderNotice(); startPolling(8000);
+    if (names) { toast('Added ' + plural(names, 'imported playlist') + ' (' + total + ' songs). Remove the ones you do not want with ×.'); }
+    sourcesChanged(null);
   });
 });
-Q('#ssTargetForm').addEventListener('submit', function (ev) {
-  ev.preventDefault();
-  var t = Q('#ssTarget').value.trim();
-  patchPlaylist(detailId, { target: t }).then(function () {
-    var e = entry(detailId); if (e) { e.target = t || null; }
-    toast(t ? 'Will be combined into \u201c' + t + '\u201d on the next sync' : 'Uses its own Jellyfin playlist again');
-  });
-});
-Q('#ssBack').addEventListener('click', function () { show('pl'); renderList(); });
-Q('#ssDMode').addEventListener('change', function () { patchPlaylist(detailId, { mode: Q('#ssDMode').value }); });
-Q('#ssDOn').addEventListener('change', function () { patchPlaylist(detailId, { enabled: Q('#ssDOn').checked }); });
 Q('#ssTTabs').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b && detail) { tab = +b.dataset.t; buildRows(false); } });
 var tfTimer = null;
 Q('#ssTFilter').addEventListener('input', function () { clearTimeout(tfTimer); tfTimer = setTimeout(function () { buildRows(false); }, 150); });
@@ -557,14 +605,14 @@ Q('#ssVp').addEventListener('click', function (ev) {
   if (act === 'find') { openFind(i); } else { override(i, act); }
 });
 Q('#ssAcceptAll').addEventListener('click', function () {
-  post('Playlists/' + encodeURIComponent(detailId) + '/AcceptAll').then(function (r) { return typeof r === 'string' ? r : r.text(); }).then(function (n) {
+  post('Syncs/' + encodeURIComponent(detailId) + '/AcceptAll').then(function (r) { return typeof r === 'string' ? r : r.text(); }).then(function (n) {
     toast((n || 0) + ' suggestions accepted');
     (detail.tracks || []).forEach(function (t) { if (t.st === ST.R && t.item) { t.st = ST.M; t.ov = true; } });
     buildRows(true); startPolling(8000);
   }, fail);
 });
 function copyMissing(id) {
-  ApiClient.fetch({ url: url('Missing' + (id ? '?playlist=' + encodeURIComponent(id) : '')), type: 'GET', dataType: 'text' }).then(function (txt) {
+  ApiClient.fetch({ url: url('Missing' + (id ? '?sync=' + encodeURIComponent(id) : '')), type: 'GET', dataType: 'text' }).then(function (txt) {
     if (!txt) { toast('Nothing missing'); return; }
     copy(txt, txt.trim().split('\n').length + ' links');
   }, fail);

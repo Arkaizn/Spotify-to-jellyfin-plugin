@@ -211,11 +211,36 @@ public sealed class SyncEngine : IDisposable
             catalogDirty = true;
         }
 
-        // 3. Playlists.
+        // 3. Sources of the active syncs.
+        catalogDirty |= SyncDefs.Ensure(catalog);
         int startOverrides = overrides.Rev;
         for (int pass = 0; pass < 2; pass++)
         {
-            var enabled = catalog.Playlists.FindAll(p => p.Enabled && p.Readable);
+            var enabled = new List<CatalogEntry>();
+            var seenSources = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var sync in catalog.Syncs)
+            {
+                if (sync.Paused)
+                {
+                    continue;
+                }
+
+                foreach (var e in SyncDefs.OrderedSources(catalog, sync))
+                {
+                    if (seenSources.Add(e.Id))
+                    {
+                        if (e.Readable)
+                        {
+                            enabled.Add(e);
+                        }
+                        else
+                        {
+                            ctx.Failed.Add(e.Id);
+                        }
+                    }
+                }
+            }
+
             for (int i = 0; i < enabled.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -236,6 +261,7 @@ public sealed class SyncEngine : IDisposable
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     _logger.LogWarning(e, "SpotiSync: playlist {Name} failed", entry.Name);
+                    ctx.Failed.Add(entry.Id);
                     Status.Log("error", entry.Name + ": " + e.Message);
                     entry.Error = e.Message;
                     catalogDirty = true;
@@ -247,10 +273,7 @@ public sealed class SyncEngine : IDisposable
                 }
             }
 
-            if (ctx.Groups.Count > 0)
-            {
-                catalogDirty |= await WriteGroupsAsync(ctx, ct).ConfigureAwait(false);
-            }
+            catalogDirty |= await WriteSyncsAsync(ctx, ct).ConfigureAwait(false);
 
             // Overrides changed while we were running: apply them now (no Spotify, incremental).
             var latest = await _store.LoadOverridesAsync(ct).ConfigureAwait(false);
@@ -449,23 +472,8 @@ public sealed class SyncEngine : IDisposable
             catalogDirty = true;
         }
 
-        // --- write to Jellyfin only if the content differs
-        var desired = DesiredItems(state);
-        int writesBefore = ctx.Outcome.Writes;
-        string summary;
-        if (!string.IsNullOrWhiteSpace(entry.Target))
-        {
-            // Several Spotify playlists feed one Jellyfin playlist: written together after all members.
-            ctx.Groups.Add((entry, desired));
-            summary = "merged into \u201c" + entry.Target.Trim() + "\u201d";
-        }
-        else
-        {
-            var name = ctx.Settings.NamePrefix + entry.Name;
-            var (jfId, s1) = await WriteAsync(name, entry.JfId, desired, entry.Mode != SyncModes.AddOnly, id => ctx.Catalog.Playlists.Exists(p => p != entry && p.JfId == id), ctx, ct).ConfigureAwait(false);
-            summary = s1;
-            catalogDirty |= Remember(entry, jfId, desired);
-        }
+        // --- the syncs using this source are written after all sources are read
+        ctx.Items[entry.Id] = DesiredItems(state);
 
         if (dirty)
         {
@@ -473,13 +481,13 @@ public sealed class SyncEngine : IDisposable
             ctx.Outcome.StateWrites++;
         }
 
-        if (dirty || writesBefore != ctx.Outcome.Writes)
+        if (dirty)
         {
             entry.LastSync = DateTime.UtcNow;
             catalogDirty = true;
         }
 
-        var line = string.Format(CultureInfo.InvariantCulture, "{0}: {1}/{2} in Jellyfin, {3} need a look, {4} not found, {5} ignored; {6}", entry.Name, matched, state.Tracks.Count, review, missing, ignored, summary);
+        var line = string.Format(CultureInfo.InvariantCulture, "{0}: {1}/{2} matched, {3} need a look, {4} not found, {5} ignored", entry.Name, matched, state.Tracks.Count, review, missing, ignored);
         _logger.LogInformation("SpotiSync: {Line}", line);
         Status.Log("info", line);
         return catalogDirty;
@@ -637,77 +645,91 @@ public sealed class SyncEngine : IDisposable
         return key;
     }
 
-    private static bool Remember(CatalogEntry entry, Guid? jfId, List<Guid> desired)
-    {
-        bool changed = false;
-        if (jfId is not null && entry.JfId != jfId)
-        {
-            entry.JfId = jfId;
-            changed = true;
-        }
-
-        var hash = Hash(desired);
-        if (jfId is not null && entry.Written != hash)
-        {
-            entry.Written = hash;
-            changed = true;
-        }
-
-        return changed;
-    }
-
     /// <summary>
-    /// Writes the Jellyfin playlists fed by several Spotify playlists (same "Jellyfin playlist" name).
-    /// Members are concatenated in natural name order ("Part 2" before "Part 10"). The group mirrors
-    /// only when every member mirrors and every member was read successfully; otherwise it only adds.
+    /// Writes every active sync: its sources' matched songs concatenated in source order, each song
+    /// once. A sync mirrors only when it is in mirror mode and every source was read this run;
+    /// otherwise it only adds, so a source that failed never removes songs.
     /// </summary>
-    private async Task<bool> WriteGroupsAsync(RunContext ctx, CancellationToken ct)
+    private async Task<bool> WriteSyncsAsync(RunContext ctx, CancellationToken ct)
     {
         bool catalogDirty = false;
-        var groups = new Dictionary<string, List<(CatalogEntry Entry, List<Guid> Items)>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var g in ctx.Groups)
+        foreach (var sync in ctx.Catalog.Syncs)
         {
-            var key = g.Entry.Target!.Trim();
-            if (!groups.TryGetValue(key, out var list))
+            if (sync.Paused)
             {
-                groups[key] = list = [];
+                continue;
             }
 
-            list.Add(g);
-        }
-
-        foreach (var (target, members) in groups)
-        {
-            members.Sort((a, b) => NaturalCompare(a.Entry.Name, b.Entry.Name));
+            var sources = SyncDefs.OrderedSources(ctx.Catalog, sync);
             var desired = new List<Guid>();
-            var seen = new HashSet<Guid>();
-            foreach (var m in members)
+            var failed = new List<string>();
+            int total = 0, matched = 0, review = 0, missing = 0, ignored = 0;
+            foreach (var src in sources)
             {
-                foreach (var id in m.Items)
+                if (ctx.Failed.Contains(src.Id) || !ctx.Items.TryGetValue(src.Id, out var items))
                 {
-                    if (seen.Add(id))
-                    {
-                        desired.Add(id);
-                    }
+                    failed.Add(src.Name);
+                    continue;
                 }
+
+                desired.AddRange(items);
+                total += src.Matched + src.Review + src.Missing + src.Ignored;
+                matched += src.Matched;
+                review += src.Review;
+                missing += src.Missing;
+                ignored += src.Ignored;
             }
 
-            bool failed = ctx.Catalog.Playlists.Exists(p => p.Enabled && p.Error is not null && string.Equals(p.Target?.Trim(), target, StringComparison.OrdinalIgnoreCase));
-            bool mirror = !failed && members.TrueForAll(m => m.Entry.Mode != SyncModes.AddOnly);
-            Guid? known = members.Find(m => m.Entry.JfId is not null).Entry?.JfId;
-            var memberSet = new HashSet<CatalogEntry>(members.ConvertAll(m => m.Entry));
-            var (jfId, summary) = await WriteAsync(ctx.Settings.NamePrefix + target, known, desired, mirror, id => ctx.Catalog.Playlists.Exists(p => !memberSet.Contains(p) && p.JfId == id), ctx, ct).ConfigureAwait(false);
-            foreach (var m in members)
+            var unique = ctx.Settings.RemoveDuplicates
+                ? DedupeBySong(desired, id => KeyOf(id, ctx))
+                : DedupeBySong(desired, _ => null);
+            bool mirror = sync.Mode != SyncModes.AddOnly && failed.Count == 0;
+            int writesBefore = ctx.Outcome.Writes;
+            var jfName = ctx.Settings.NamePrefix + sync.Name;
+            if (sync.JfId is Guid existing && sync.WrittenName is not null && !string.Equals(sync.WrittenName, jfName, StringComparison.Ordinal)
+                && ctx.Settings.OwnerUserId != Guid.Empty && _target.Resolve(existing, jfName, ctx.Settings.OwnerUserId) == existing)
             {
-                catalogDirty |= Remember(m.Entry, jfId, desired);
+                await _target.RenameAsync(existing, jfName, ctx.Settings.OwnerUserId, ct).ConfigureAwait(false);
+                ctx.Outcome.Writes++;
             }
 
-            var line = string.Format(CultureInfo.InvariantCulture, "Jellyfin playlist \u201c{0}\u201d from {1} Spotify playlists ({2} songs, {3}): {4}", target, members.Count, desired.Count, mirror ? "mirror" : "add only", summary);
+            var (jfId, summary) = await WriteAsync(jfName, sync.JfId, unique, mirror, id => ctx.Catalog.Syncs.Exists(o => o != sync && o.JfId == id), ctx, ct).ConfigureAwait(false);
+
+            var hash = Hash(unique);
+            string? error = failed.Count == 0 ? null : "Could not read: " + string.Join(", ", failed) + " (only adding songs until it works again)";
+            if ((jfId is not null && sync.JfId != jfId) || (jfId is not null && sync.Written != hash) || sync.Total != total || sync.InJellyfin != unique.Count
+                || sync.Duplicates != matched - unique.Count || sync.Review != review || sync.Missing != missing || sync.Ignored != ignored || sync.Error != error)
+            {
+                sync.JfId = jfId ?? sync.JfId;
+                sync.Written = jfId is null ? sync.Written : hash;
+                sync.Total = total;
+                sync.InJellyfin = unique.Count;
+                sync.Duplicates = Math.Max(0, matched - unique.Count);
+                sync.Review = review;
+                sync.Missing = missing;
+                sync.Ignored = ignored;
+                sync.Error = error;
+                catalogDirty = true;
+            }
+
+            if (jfId is not null && sync.WrittenName != jfName)
+            {
+                sync.WrittenName = jfName;
+                catalogDirty = true;
+            }
+
+            if (writesBefore != ctx.Outcome.Writes)
+            {
+                sync.LastSync = DateTime.UtcNow;
+                catalogDirty = true;
+            }
+
+            var line = string.Format(CultureInfo.InvariantCulture, "Jellyfin playlist \u201c{0}\u201d ({1} source{2}, {3}): {4} songs, {5} duplicates skipped; {6}", sync.Name, sources.Count, sources.Count == 1 ? string.Empty : "s", mirror ? "mirror" : "add only", unique.Count, Math.Max(0, matched - unique.Count), summary);
             _logger.LogInformation("SpotiSync: {Line}", line);
             Status.Log("info", line);
         }
 
-        ctx.Groups.Clear();
+        ctx.Items.Clear();
         return catalogDirty;
     }
 
@@ -1130,7 +1152,9 @@ public sealed class SyncEngine : IDisposable
 
         public Dictionary<Guid, string?> Keys { get; } = [];
 
-        public List<(CatalogEntry Entry, List<Guid> Items)> Groups { get; } = [];
+        public Dictionary<string, List<Guid>> Items { get; } = new(StringComparer.Ordinal);
+
+        public HashSet<string> Failed { get; } = new(StringComparer.Ordinal);
 
         public LibraryIndex? Index { get; set; }
 

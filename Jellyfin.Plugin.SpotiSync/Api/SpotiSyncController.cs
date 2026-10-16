@@ -191,7 +191,17 @@ public class SpotiSyncController : ControllerBase
     /// <summary>The playlist catalog (with counts), straight from disk, with ETag.</summary>
     /// <returns>Catalog JSON.</returns>
     [HttpGet("Playlists")]
-    public ActionResult GetPlaylists() => FileWithETag(_service.Store.CatalogPath, "{\"playlists\":[]}");
+    public async Task<ActionResult> GetPlaylists()
+    {
+        // Older versions had no syncs: convert switched-on playlists once, before the page shows them.
+        var catalog = await _service.Store.LoadCatalogAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+        if (catalog.Playlists.Exists(p => p.Enabled && p.Readable))
+        {
+            await UpdateCatalogAsync(c => SyncDefs.Ensure(c)).ConfigureAwait(false);
+        }
+
+        return FileWithETag(_service.Store.CatalogPath, "{\"playlists\":[]}");
+    }
 
     /// <summary>Toggles a playlist or changes its mode.</summary>
     /// <param name="id">Spotify playlist id.</param>
@@ -246,10 +256,22 @@ public class SpotiSyncController : ControllerBase
     public async Task<ActionResult> AddPublic()
     {
         var req = await ReadAsync(StateJsonContext.Default.AddPublicRequest).ConfigureAwait(false);
-        var spotifyId = SpotifyPublicClient.ParsePlaylistId(req?.Url);
+        var (entry, error) = await AddPublicEntryAsync(req?.Url, enable: true).ConfigureAwait(false);
+        if (entry is null)
+        {
+            return BadRequest(error);
+        }
+
+        QueueRun(rematch: false);
+        return Json(entry, StateJsonContext.Default.CatalogEntry);
+    }
+
+    private async Task<(CatalogEntry? Entry, string? Error)> AddPublicEntryAsync(string? url, bool enable)
+    {
+        var spotifyId = SpotifyPublicClient.ParsePlaylistId(url);
         if (spotifyId is null)
         {
-            return BadRequest("Paste a Spotify playlist link like https://open.spotify.com/playlist/...");
+            return (null, "Paste a Spotify playlist link like https://open.spotify.com/playlist/...");
         }
 
         PublicPlaylist pub;
@@ -259,7 +281,7 @@ public class SpotiSyncController : ControllerBase
         }
         catch (Exception e) when (e is SpotifyApiException or System.Net.Http.HttpRequestException or JsonException)
         {
-            return BadRequest("Could not read this playlist: " + e.Message);
+            return (null, "Could not read this playlist: " + e.Message);
         }
 
         var id = "pub-" + spotifyId;
@@ -280,10 +302,296 @@ public class SpotiSyncController : ControllerBase
             entry.Total = pub.Tracks.Count;
             entry.Capped = pub.Capped;
             entry.Readable = true;
-            entry.Enabled = true;
+            entry.Enabled |= enable;
         }).ConfigureAwait(false);
+        return (entry, null);
+    }
+
+    // ------------------------------------------------------------------ syncs (Jellyfin playlists built from sources)
+
+    /// <summary>Creates a sync (a Jellyfin playlist built from Spotify playlists).</summary>
+    /// <returns>The sync.</returns>
+    [HttpPost("Syncs")]
+    public async Task<ActionResult> CreateSync()
+    {
+        var req = await ReadAsync(StateJsonContext.Default.SyncEdit).ConfigureAwait(false);
+        var name = req?.Name?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return BadRequest("Give the Jellyfin playlist a name.");
+        }
+
+        var sync = new SyncDef { Id = SyncDefs.NewId(), Name = name, Mode = SyncModes.Normalize(req!.Mode ?? SpotiSyncService.Config.DefaultMode) };
+        await UpdateCatalogAsync(c => c.Syncs.Add(sync)).ConfigureAwait(false);
+        return Json(sync, StateJsonContext.Default.SyncDef);
+    }
+
+    /// <summary>Renames a sync, changes its mode or switches it on/off.</summary>
+    /// <param name="id">Sync id.</param>
+    /// <returns>The sync.</returns>
+    [HttpPost("Syncs/{id}")]
+    public async Task<ActionResult> EditSync([FromRoute] string id)
+    {
+        var req = await ReadAsync(StateJsonContext.Default.SyncEdit).ConfigureAwait(false);
+        SyncDef? sync = null;
+        await UpdateCatalogAsync(c =>
+        {
+            sync = c.Syncs.Find(x => x.Id == id);
+            if (sync is null || req is null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(req.Name))
+            {
+                sync.Name = req.Name.Trim();
+            }
+
+            if (req.Mode is not null)
+            {
+                sync.Mode = SyncModes.Normalize(req.Mode);
+            }
+
+            if (req.Enabled is bool en)
+            {
+                sync.Paused = !en;
+            }
+        }).ConfigureAwait(false);
+        if (sync is null)
+        {
+            return NotFound();
+        }
+
+        QueueRun(rematch: true);
+        return Json(sync, StateJsonContext.Default.SyncDef);
+    }
+
+    /// <summary>Deletes a sync. The Jellyfin playlist and the sources stay.</summary>
+    /// <param name="id">Sync id.</param>
+    /// <returns>No content.</returns>
+    [HttpDelete("Syncs/{id}")]
+    public async Task<ActionResult> DeleteSync([FromRoute] string id)
+    {
+        bool removed = false;
+        await UpdateCatalogAsync(c => removed = c.Syncs.RemoveAll(x => x.Id == id) > 0).ConfigureAwait(false);
+        return removed ? NoContent() : NotFound();
+    }
+
+    /// <summary>Adds a source to a sync: a public link (url) or a playlist SpotiSync already knows (entryId).</summary>
+    /// <param name="id">Sync id.</param>
+    /// <returns>The sync.</returns>
+    [HttpPost("Syncs/{id}/Sources")]
+    public async Task<ActionResult> AddSource([FromRoute] string id)
+    {
+        var req = await ReadAsync(StateJsonContext.Default.SourceAdd).ConfigureAwait(false);
+        string? entryId = req?.EntryId;
+        if (!string.IsNullOrWhiteSpace(req?.Url))
+        {
+            var (entry, error) = await AddPublicEntryAsync(req.Url, enable: false).ConfigureAwait(false);
+            if (entry is null)
+            {
+                return BadRequest(error);
+            }
+
+            entryId = entry.Id;
+        }
+
+        if (string.IsNullOrEmpty(entryId))
+        {
+            return BadRequest("Nothing to add.");
+        }
+
+        SyncDef? sync = null;
+        string? problem = null;
+        await UpdateCatalogAsync(c =>
+        {
+            sync = c.Syncs.Find(x => x.Id == id);
+            var entry = c.Playlists.Find(p => p.Id == entryId);
+            if (sync is null || entry is null)
+            {
+                problem = "Not found.";
+                return;
+            }
+
+            if (!entry.Readable)
+            {
+                problem = "Spotify does not return the songs of this playlist. Add it by its public link instead.";
+                return;
+            }
+
+            if (!sync.Sources.Contains(entryId))
+            {
+                sync.Sources.Add(entryId);
+            }
+        }).ConfigureAwait(false);
+        if (problem is not null)
+        {
+            return BadRequest(problem);
+        }
+
         QueueRun(rematch: false);
-        return Json(entry!, StateJsonContext.Default.CatalogEntry);
+        return Json(sync!, StateJsonContext.Default.SyncDef);
+    }
+
+    /// <summary>Removes a source from a sync.</summary>
+    /// <param name="id">Sync id.</param>
+    /// <param name="entryId">Source id.</param>
+    /// <returns>No content.</returns>
+    [HttpDelete("Syncs/{id}/Sources/{entryId}")]
+    public async Task<ActionResult> RemoveSource([FromRoute] string id, [FromRoute] string entryId)
+    {
+        bool removed = false;
+        await UpdateCatalogAsync(c => removed = c.Syncs.Find(x => x.Id == id)?.Sources.Remove(entryId) ?? false).ConfigureAwait(false);
+        if (removed)
+        {
+            QueueRun(rematch: true);
+        }
+
+        return removed ? NoContent() : NotFound();
+    }
+
+    /// <summary>Moves a source up or down (switches the sync to manual order).</summary>
+    /// <param name="id">Sync id.</param>
+    /// <param name="entryId">Source id.</param>
+    /// <param name="dir">"up" or "down".</param>
+    /// <returns>The sync.</returns>
+    [HttpPost("Syncs/{id}/Sources/{entryId}/Move")]
+    public async Task<ActionResult> MoveSource([FromRoute] string id, [FromRoute] string entryId, [FromQuery] string? dir)
+    {
+        SyncDef? sync = null;
+        await UpdateCatalogAsync(c =>
+        {
+            sync = c.Syncs.Find(x => x.Id == id);
+            if (sync is null)
+            {
+                return;
+            }
+
+            // Freeze the current (possibly name-sorted) order, then move.
+            var ordered = SyncDefs.OrderedSources(c, sync).ConvertAll(e => e.Id);
+            sync.Sources = ordered;
+            sync.NaturalOrder = false;
+            int i = ordered.IndexOf(entryId);
+            int j = dir == "up" ? i - 1 : i + 1;
+            if (i >= 0 && j >= 0 && j < ordered.Count)
+            {
+                (ordered[i], ordered[j]) = (ordered[j], ordered[i]);
+            }
+        }).ConfigureAwait(false);
+        if (sync is null)
+        {
+            return NotFound();
+        }
+
+        QueueRun(rematch: true);
+        return Json(sync, StateJsonContext.Default.SyncDef);
+    }
+
+    /// <summary>
+    /// The combined song list of a sync: every source's tracks in order, with which source they
+    /// come from and whether a track is a duplicate of an earlier one (skipped in Jellyfin).
+    /// </summary>
+    /// <param name="id">Sync id.</param>
+    /// <returns>Sources and tracks.</returns>
+    [HttpGet("Syncs/{id}/Tracks")]
+    public async Task<ActionResult> SyncTracks([FromRoute] string id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var catalog = await _service.Store.LoadCatalogAsync(ct).ConfigureAwait(false);
+        var sync = catalog.Syncs.Find(x => x.Id == id);
+        if (sync is null)
+        {
+            return NotFound();
+        }
+
+        var sources = SyncDefs.OrderedSources(catalog, sync);
+        var tagSource = new StringBuilder(StateStore.ETagOf(_service.Store.CatalogPath));
+        foreach (var src in sources)
+        {
+            tagSource.Append(StateStore.ETagOf(_service.Store.PlaylistPath(src.Id)));
+        }
+
+        tagSource.Append(SpotiSyncService.Config.RemoveDuplicates);
+        var etag = "W/\"" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(tagSource.ToString())).AsSpan(0, 10)) + "\"";
+        Response.Headers.CacheControl = "no-cache";
+        if (NotModified(etag))
+        {
+            return StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        bool dedupe = SpotiSyncService.Config.RemoveDuplicates;
+        var dto = new SyncTracksDto();
+        var first = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int s = 0; s < sources.Count; s++)
+        {
+            var src = sources[s];
+            dto.Sources.Add(new SourceRefDto { Id = src.Id, Name = src.Name, Source = src.Source, Total = src.Total, Capped = src.Capped, Error = src.Error });
+            var state = await _service.Store.LoadPlaylistAsync(src.Id, ct).ConfigureAwait(false);
+            if (state is null)
+            {
+                continue;
+            }
+
+            foreach (var t in state.Tracks)
+            {
+                var row = new SyncTrackDto
+                {
+                    Key = t.Key, Id = t.Id, Title = t.Title, Artists = t.Artists, Album = t.Album, St = t.St, Item = t.Item,
+                    Score = t.Score, Text = t.Text, Ov = t.Ov, Src = s,
+                };
+                if (t.St == TrackStatus.Matched && t.Item is Guid item)
+                {
+                    var key = (dedupe ? Matching.SongKey.FromText(t.Text) : null) ?? item.ToString();
+                    if (first.TryGetValue(key, out int pos))
+                    {
+                        row.DupOf = pos;
+                    }
+                    else
+                    {
+                        first[key] = dto.Tracks.Count + 1;
+                    }
+                }
+
+                dto.Tracks.Add(row);
+            }
+        }
+
+        Response.Headers.ETag = etag;
+        return Json(dto, StateJsonContext.Default.SyncTracksDto);
+    }
+
+    /// <summary>Accepts every suggestion in all sources of a sync.</summary>
+    /// <param name="id">Sync id.</param>
+    /// <returns>Number accepted.</returns>
+    [HttpPost("Syncs/{id}/AcceptAll")]
+    public async Task<ActionResult> AcceptAllInSync([FromRoute] string id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var catalog = await _service.Store.LoadCatalogAsync(ct).ConfigureAwait(false);
+        var sync = catalog.Syncs.Find(x => x.Id == id);
+        if (sync is null)
+        {
+            return NotFound();
+        }
+
+        var accepted = new List<TrackState>();
+        foreach (var src in sync.Sources)
+        {
+            var state = await _service.Store.LoadPlaylistAsync(src, ct).ConfigureAwait(false);
+            if (state is not null)
+            {
+                accepted.AddRange(state.Tracks.FindAll(t => t.St == TrackStatus.Review && t.Item is not null));
+            }
+        }
+
+        await UpdateOverridesAsync(o =>
+        {
+            foreach (var t in accepted)
+            {
+                o.Items[t.Key] = new OverrideEntry { Item = t.Item, Text = t.Text, Rev = o.Rev };
+            }
+        }).ConfigureAwait(false);
+        return Content(accepted.Count.ToString(CultureInfo.InvariantCulture), "text/plain");
     }
 
     /// <summary>
@@ -293,7 +601,7 @@ public class SpotiSyncController : ControllerBase
     /// <returns>What was imported.</returns>
     [HttpPost("Import")]
     [RequestSizeLimit(64 * 1024 * 1024)]
-    public async Task<ActionResult> Import()
+    public async Task<ActionResult> Import([FromQuery] string? sync)
     {
         List<ExportedPlaylist> found;
         try
@@ -332,6 +640,11 @@ public class SpotiSyncController : ControllerBase
                 entry.Readable = true;
                 entry.Snapshot = SyncEngine.Snapshot(pl.Tracks);
                 entries.Add((id, pl));
+                var target = sync is null ? null : c.Syncs.Find(x => x.Id == sync);
+                if (target is not null && !target.Sources.Contains(id))
+                {
+                    target.Sources.Add(id);
+                }
             }
         }).ConfigureAwait(false);
 
@@ -363,7 +676,14 @@ public class SpotiSyncController : ControllerBase
     public async Task<ActionResult> RemovePlaylist([FromRoute] string id)
     {
         bool removed = false;
-        await UpdateCatalogAsync(c => removed = c.Playlists.RemoveAll(p => p.Id == id && p.Source is not null) > 0).ConfigureAwait(false);
+        await UpdateCatalogAsync(c =>
+        {
+            removed = c.Playlists.RemoveAll(p => p.Id == id && p.Source is not null) > 0;
+            foreach (var x in c.Syncs)
+            {
+                x.Sources.Remove(id);
+            }
+        }).ConfigureAwait(false);
         if (!removed)
         {
             return NotFound();
@@ -437,7 +757,7 @@ public class SpotiSyncController : ControllerBase
     /// <param name="playlist">Playlist id, or empty for all synced playlists.</param>
     /// <returns>One URL per line.</returns>
     [HttpGet("Missing")]
-    public async Task<ActionResult> Missing([FromQuery] string? playlist)
+    public async Task<ActionResult> Missing([FromQuery] string? playlist, [FromQuery] string? sync)
     {
         var ct = HttpContext.RequestAborted;
         var ids = new List<string>();
@@ -447,11 +767,12 @@ public class SpotiSyncController : ControllerBase
         }
         else
         {
-            foreach (var e in (await _service.Store.LoadCatalogAsync(ct).ConfigureAwait(false)).Playlists)
+            var catalog = await _service.Store.LoadCatalogAsync(ct).ConfigureAwait(false);
+            foreach (var x in catalog.Syncs)
             {
-                if (e.Enabled)
+                if (!x.Paused && (sync is null || x.Id == sync))
                 {
-                    ids.Add(e.Id);
+                    ids.AddRange(x.Sources);
                 }
             }
         }

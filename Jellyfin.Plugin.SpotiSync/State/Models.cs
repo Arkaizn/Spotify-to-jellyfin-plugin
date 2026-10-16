@@ -190,6 +190,63 @@ public sealed class CatalogEntry
     public string? Error { get; set; }
 }
 
+/// <summary>
+/// One Jellyfin playlist and the Spotify playlists (sources) it is built from, in order.
+/// </summary>
+public sealed class SyncDef
+{
+    /// <summary>Gets or sets the id.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the Jellyfin playlist name.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the mode (<see cref="SyncModes"/>).</summary>
+    public string Mode { get; set; } = SyncModes.Mirror;
+
+    /// <summary>Gets or sets a value indicating whether the sync is switched off (false is the stored default).</summary>
+    public bool Paused { get; set; }
+
+    /// <summary>Gets or sets the source ids (catalog entry ids), in playlist order.</summary>
+    public List<string> Sources { get; set; } = [];
+
+    /// <summary>Gets or sets a value indicating whether sources are ordered by name ("Part 2" before "Part 10") instead of by hand.</summary>
+    public bool NaturalOrder { get; set; }
+
+    /// <summary>Gets or sets the Jellyfin playlist id.</summary>
+    public Guid? JfId { get; set; }
+
+    /// <summary>Gets or sets the hash of the item list last written.</summary>
+    public string? Written { get; set; }
+
+    /// <summary>Gets or sets the name the Jellyfin playlist had when last written (renames follow <see cref="Name"/>).</summary>
+    public string? WrittenName { get; set; }
+
+    /// <summary>Gets or sets the number of Spotify tracks over all sources.</summary>
+    public int Total { get; set; }
+
+    /// <summary>Gets or sets the number of songs in the Jellyfin playlist.</summary>
+    public int InJellyfin { get; set; }
+
+    /// <summary>Gets or sets the number of matched tracks skipped as duplicates.</summary>
+    public int Duplicates { get; set; }
+
+    /// <summary>Gets or sets the need-a-look count.</summary>
+    public int Review { get; set; }
+
+    /// <summary>Gets or sets the not-found count.</summary>
+    public int Missing { get; set; }
+
+    /// <summary>Gets or sets the ignored count.</summary>
+    public int Ignored { get; set; }
+
+    /// <summary>Gets or sets the last time the Jellyfin playlist was checked.</summary>
+    public DateTime? LastSync { get; set; }
+
+    /// <summary>Gets or sets a problem with one of the sources.</summary>
+    public string? Error { get; set; }
+}
+
 /// <summary>The list of Spotify playlists and global sync bookkeeping.</summary>
 public sealed class Catalog
 {
@@ -213,6 +270,9 @@ public sealed class Catalog
 
     /// <summary>Gets or sets the playlists (Liked Songs first).</summary>
     public List<CatalogEntry> Playlists { get; set; } = [];
+
+    /// <summary>Gets or sets the syncs: Jellyfin playlists built from one or more sources.</summary>
+    public List<SyncDef> Syncs { get; set; } = [];
 }
 
 /// <summary>A manual decision for one Spotify track, applied in every playlist on every sync.</summary>

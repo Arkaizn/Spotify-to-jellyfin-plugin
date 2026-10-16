@@ -83,6 +83,75 @@ public sealed class OverrideRequest
     public string? Playlist { get; set; }
 }
 
+public sealed class SyncEdit
+{
+    public string? Name { get; set; }
+
+    public string? Mode { get; set; }
+
+    public bool? Enabled { get; set; }
+}
+
+/// <summary>Adds a source to a sync: a public link, or an existing catalog entry.</summary>
+public sealed class SourceAdd
+{
+    public string? Url { get; set; }
+
+    public string? EntryId { get; set; }
+}
+
+public sealed class SourceRefDto
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Source { get; set; }
+
+    public int Total { get; set; }
+
+    public bool Capped { get; set; }
+
+    public string? Error { get; set; }
+}
+
+/// <summary>One row of the combined song list of a sync.</summary>
+public sealed class SyncTrackDto
+{
+    public string Key { get; set; } = string.Empty;
+
+    public string? Id { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+
+    public string[] Artists { get; set; } = [];
+
+    public string? Album { get; set; }
+
+    public State.TrackStatus St { get; set; }
+
+    public Guid? Item { get; set; }
+
+    public double Score { get; set; }
+
+    public string? Text { get; set; }
+
+    public bool Ov { get; set; }
+
+    /// <summary>Index into <see cref="SyncTracksDto.Sources"/>.</summary>
+    public int Src { get; set; }
+
+    /// <summary>1-based position of the first row with the same song (0 = not a duplicate).</summary>
+    public int DupOf { get; set; }
+}
+
+public sealed class SyncTracksDto
+{
+    public List<SourceRefDto> Sources { get; set; } = [];
+
+    public List<SyncTrackDto> Tracks { get; set; } = [];
+}
+
 public sealed class AddPublicRequest
 {
     public string? Url { get; set; }
