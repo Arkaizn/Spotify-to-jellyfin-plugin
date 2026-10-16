@@ -16,7 +16,8 @@ namespace Jellyfin.Plugin.SpotiSync.Sync;
 /// <param name="OwnerUserId">Jellyfin user owning the playlists.</param>
 /// <param name="NamePrefix">Prefix for Jellyfin playlist names.</param>
 /// <param name="DefaultMode">Mode for newly discovered playlists.</param>
-public sealed record SyncSettings(Guid OwnerUserId, string NamePrefix, string DefaultMode);
+/// <param name="RemoveDuplicates">Write each song only once per Jellyfin playlist (same title, main artist and version).</param>
+public sealed record SyncSettings(Guid OwnerUserId, string NamePrefix, string DefaultMode, bool RemoveDuplicates = true);
 
 /// <summary>Counters of one run (also used by tests and the benchmark).</summary>
 public sealed class SyncOutcome
@@ -61,6 +62,7 @@ public sealed class SyncEngine : IDisposable
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly IPublicPlaylistSource? _public;
+    private int _dedupeRequested;
 
     /// <summary>Initializes a new instance of the <see cref="SyncEngine"/> class.</summary>
     /// <param name="spotify">Spotify.</param>
@@ -85,6 +87,9 @@ public sealed class SyncEngine : IDisposable
 
     /// <inheritdoc />
     public void Dispose() => _runLock.Dispose();
+
+    /// <summary>Makes the next run also clean up duplicates already in add-only playlists.</summary>
+    public void RequestDedupe() => Interlocked.Exchange(ref _dedupeRequested, 1);
 
     /// <summary>Gets the live status.</summary>
     public SyncStatus Status { get; } = new();
@@ -153,6 +158,7 @@ public sealed class SyncEngine : IDisposable
         var overrides = await _store.LoadOverridesAsync(ct).ConfigureAwait(false);
         bool catalogDirty = false;
         var ctx = new RunContext(catalog, overrides, settings, outcome);
+        ctx.ForceDedupe = Interlocked.Exchange(ref _dedupeRequested, 0) == 1;
 
         // 1. Spotify playlist list: one listing per sync.
         if (mode == SyncMode.Full)
@@ -399,6 +405,41 @@ public sealed class SyncEngine : IDisposable
             }
         }
 
+        // Duplicates inside this playlist: later tracks that resolve to a song already listed.
+        int duplicates = 0;
+        var firstByKey = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < state.Tracks.Count; i++)
+        {
+            var t = state.Tracks[i];
+            int dup = 0;
+            if (t.St == TrackStatus.Matched && t.Item is Guid item)
+            {
+                var key = ctx.Settings.RemoveDuplicates ? SongKey.FromText(t.Text) ?? item.ToString() : item.ToString();
+                ctx.Keys[item] = ctx.Settings.RemoveDuplicates ? SongKey.FromText(t.Text) : null;
+                if (firstByKey.TryGetValue(key, out int first))
+                {
+                    dup = first + 1;
+                    duplicates++;
+                }
+                else
+                {
+                    firstByKey[key] = i;
+                }
+            }
+
+            if (t.Dup != dup)
+            {
+                t.Dup = dup;
+                dirty = true;
+            }
+        }
+
+        if (entry.Duplicates != duplicates)
+        {
+            entry.Duplicates = duplicates;
+            catalogDirty = true;
+        }
+
         if (entry.Matched != matched || entry.Review != review || entry.Missing != missing || entry.Ignored != ignored)
         {
             entry.Matched = matched;
@@ -454,6 +495,15 @@ public sealed class SyncEngine : IDisposable
             return (knownId, "no owner user set, not written");
         }
 
+        bool dedupe = ctx.Settings.RemoveDuplicates;
+        int skipped = 0;
+        if (dedupe)
+        {
+            var before = desired.Count;
+            desired = DedupeBySong(desired, id => KeyOf(id, ctx));
+            skipped = before - desired.Count;
+        }
+
         var jfId = _target.Resolve(knownId, name, owner);
         if (jfId is Guid found && found != knownId && claimedElsewhere(found))
         {
@@ -473,17 +523,60 @@ public sealed class SyncEngine : IDisposable
         }
 
         var current = _target.GetItems(jfId.Value);
+        if (dedupe && !mirror)
+        {
+            // Add only, song-aware: keep what is there (first copy of each song stays in place),
+            // append only songs that are not in the playlist yet.
+            var currentSet = new HashSet<Guid>(current);
+            bool newSongs = desired.Exists(id => !currentSet.Contains(id));
+            if (newSongs || ctx.ForceDedupe || currentSet.Count != current.Count)
+            {
+                var final = DedupeBySong(current, id => KeyOf(id, ctx));
+                var keys = new HashSet<string>(StringComparer.Ordinal);
+                var ids = new HashSet<Guid>(final);
+                foreach (var id in final)
+                {
+                    if (KeyOf(id, ctx) is { } k)
+                    {
+                        keys.Add(k);
+                    }
+                }
+
+                foreach (var id in desired)
+                {
+                    var k = KeyOf(id, ctx);
+                    if (!ids.Contains(id) && (k is null || keys.Add(k)))
+                    {
+                        final.Add(id);
+                        ids.Add(id);
+                    }
+                    else if (!ids.Contains(id))
+                    {
+                        skipped++;
+                    }
+                }
+
+                desired = final;
+                mirror = true; // the final list already keeps every existing song
+            }
+            else
+            {
+                return (jfId, "unchanged");
+            }
+        }
+
         var plan = PlaylistDiff.Compute(current, desired, mirror);
+        var dupNote = skipped > 0 ? " (" + skipped + " duplicate" + (skipped == 1 ? string.Empty : "s") + " kept out)" : string.Empty;
         if (plan.IsEmpty)
         {
-            return (jfId, "unchanged");
+            return (jfId, "unchanged" + dupNote);
         }
 
         if (plan.Replace)
         {
             await _target.ReplaceAsync(jfId.Value, desired, owner, ct).ConfigureAwait(false);
             ctx.Outcome.Writes++;
-            return (jfId, "rewritten (" + desired.Count + " songs)");
+            return (jfId, "rewritten (" + desired.Count + " songs)" + dupNote);
         }
 
         if (plan.Remove.Count > 0)
@@ -504,7 +597,44 @@ public sealed class SyncEngine : IDisposable
             ctx.Outcome.Writes++;
         }
 
-        return (jfId, "+" + plan.Append.Count + " -" + plan.Remove.Count + " moved " + plan.Moves.Count);
+        return (jfId, "+" + plan.Append.Count + " -" + plan.Remove.Count + " moved " + plan.Moves.Count + dupNote);
+    }
+
+    /// <summary>Keeps the first item of each song, in order.</summary>
+    /// <param name="items">Items.</param>
+    /// <param name="keyOf">Song key of an item (null = unknown, never treated as duplicate).</param>
+    /// <returns>Filtered list.</returns>
+    public static List<Guid> DedupeBySong(IReadOnlyList<Guid> items, Func<Guid, string?> keyOf)
+    {
+        var result = new List<Guid>(items.Count);
+        var ids = new HashSet<Guid>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in items)
+        {
+            if (!ids.Add(id))
+            {
+                continue;
+            }
+
+            var k = keyOf(id);
+            if (k is null || keys.Add(k))
+            {
+                result.Add(id);
+            }
+        }
+
+        return result;
+    }
+
+    private string? KeyOf(Guid id, RunContext ctx)
+    {
+        if (!ctx.Keys.TryGetValue(id, out var key) || key is null)
+        {
+            key = _target.GetSongKey(id);
+            ctx.Keys[id] = key;
+        }
+
+        return key;
     }
 
     private static bool Remember(CatalogEntry entry, Guid? jfId, List<Guid> desired)
@@ -995,6 +1125,10 @@ public sealed class SyncEngine : IDisposable
         public bool SpotifyOk { get; set; }
 
         public bool PublicOk { get; set; }
+
+        public bool ForceDedupe { get; set; }
+
+        public Dictionary<Guid, string?> Keys { get; } = [];
 
         public List<(CatalogEntry Entry, List<Guid> Items)> Groups { get; } = [];
 

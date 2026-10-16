@@ -98,6 +98,11 @@ public interface IPlaylistTarget
     /// <returns>Item ids.</returns>
     IReadOnlyList<Guid> GetItems(Guid playlistId);
 
+    /// <summary>Song key (see <c>SongKey</c>) of a library item, or null when unknown.</summary>
+    /// <param name="itemId">Item id.</param>
+    /// <returns>The key.</returns>
+    string? GetSongKey(Guid itemId);
+
     /// <summary>Creates a playlist.</summary>
     /// <param name="name">Name.</param>
     /// <param name="ownerId">Owner.</param>

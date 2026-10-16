@@ -24,6 +24,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the mode new playlists start with: "mirror" or "add".</summary>
     public string DefaultMode { get; set; } = "mirror";
 
+    /// <summary>Gets or sets a value indicating whether each song is written only once per Jellyfin playlist.</summary>
+    public bool RemoveDuplicates { get; set; } = true;
+
     /// <summary>Gets or sets a prefix put in front of Jellyfin playlist names (empty = same name).</summary>
     public string NamePrefix { get; set; } = string.Empty;
 }

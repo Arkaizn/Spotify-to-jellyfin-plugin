@@ -128,6 +128,10 @@ internal sealed class FakeTarget : IPlaylistTarget
 
     public IReadOnlyList<Guid> GetItems(Guid playlistId) => Playlists[playlistId].Items.ToList();
 
+    public Dictionary<Guid, string> Keys { get; } = [];
+
+    public string? GetSongKey(Guid itemId) => Keys.TryGetValue(itemId, out var k) ? k : null;
+
     public Task<Guid> CreateAsync(string name, Guid ownerId, IReadOnlyList<Guid> items, CancellationToken ct)
     {
         Writes++;

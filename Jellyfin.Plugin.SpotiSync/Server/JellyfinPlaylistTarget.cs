@@ -74,6 +74,12 @@ public sealed class JellyfinPlaylistTarget : IPlaylistTarget
     }
 
     /// <inheritdoc />
+    public string? GetSongKey(Guid itemId)
+        => _library.GetItemById(itemId) is MediaBrowser.Controller.Entities.Audio.Audio a
+            ? Matching.SongKey.Of(a.Name, a.Artists is { Count: > 0 } ? a.Artists[0] : (a.AlbumArtists is { Count: > 0 } ? a.AlbumArtists[0] : null))
+            : null;
+
+    /// <inheritdoc />
     public async Task<Guid> CreateAsync(string name, Guid ownerId, IReadOnlyList<Guid> items, CancellationToken ct)
     {
         var result = await _playlists.CreatePlaylist(new PlaylistCreationRequest

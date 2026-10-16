@@ -25,6 +25,8 @@ public sealed class SettingsDto
 
     public string NamePrefix { get; set; } = string.Empty;
 
+    public bool RemoveDuplicates { get; set; }
+
     // read-only fields below
     public string? RedirectUri { get; set; }
 
