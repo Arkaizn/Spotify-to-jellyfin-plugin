@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.5.0.0",
+        "changelog": "Pick an existing Jellyfin playlist for a sync (or create a new one); change the playlist a sync writes into from its detail view.",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/Arkaizn/Spotify-to-jellyfin-plugin/releases/download/v1.5.0/spotisync_1.5.0.0.zip",
+        "checksum": "169422e2c04e9c6382025e1e537a1bfa",
+        "timestamp": "2026-10-26T22:09:29Z"
+      },
+      {
         "version": "1.4.0.0",
         "changelog": "Bug fixes and improvements.",
         "targetAbi": "12.2.0.0",
