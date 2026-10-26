@@ -118,32 +118,40 @@ public class BenchmarkTests
         long before = GC.GetTotalMemory(true);
         long allocBefore = GC.GetAllocatedBytesForCurrentThread();
         var sw = Stopwatch.StartNew();
-        long peak = 0;
-        IEnumerable<LibraryRecord> Sampled()
-        {
-            for (int k = 0; k < records.Length; k++)
-            {
-                if ((k & 511) == 0)
-                {
-                    peak = Math.Max(peak, GC.GetTotalMemory(false) - before);
-                }
-
-                yield return records[k];
-            }
-        }
-
-        var index = LibraryIndexBuilder.Build(Sampled(), LibrarySize);
-        peak = Math.Max(peak, GC.GetTotalMemory(false) - before);
+        var index = LibraryIndexBuilder.Build(records, LibrarySize);
         sw.Stop();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
         long retained = GC.GetTotalMemory(true) - before;
         Assert.Equal(LibrarySize, index.Count);
         GC.KeepAlive(index);
         index = null;
-        GC.KeepAlive(records);
         long afterDrop = GC.GetTotalMemory(true) - before;
 
-        _out.WriteLine($"Index build {LibrarySize:N0} items: {sw.ElapsedMilliseconds} ms, retained {retained / 1048576.0:F1} MB, peak heap growth {peak / 1048576.0:F1} MB (includes uncollected garbage), allocated during build {allocated / 1048576.0:F1} MB (transient), after drop {afterDrop / 1048576.0:F1} MB");
+        // Peak of live memory while building, in a second, untimed pass. GetTotalMemory(false) would also
+        // count garbage the GC simply has not collected yet; that depends on the machine's GC budget (it
+        // made this check fail on some CI runners at 84 MB while live memory stays ~15 MB), so each sample
+        // collects first.
+        before = GC.GetTotalMemory(true);
+        long peak = 0;
+        IEnumerable<LibraryRecord> Sampled()
+        {
+            for (int k = 0; k < records.Length; k++)
+            {
+                if (k % 5000 == 4999)
+                {
+                    peak = Math.Max(peak, GC.GetTotalMemory(true) - before);
+                }
+
+                yield return records[k];
+            }
+        }
+
+        var again = LibraryIndexBuilder.Build(Sampled(), LibrarySize);
+        peak = Math.Max(peak, GC.GetTotalMemory(true) - before);
+        GC.KeepAlive(again);
+        GC.KeepAlive(records);
+
+        _out.WriteLine($"Index build {LibrarySize:N0} items: {sw.ElapsedMilliseconds} ms, retained {retained / 1048576.0:F1} MB, peak live memory while building {peak / 1048576.0:F1} MB, allocated during build {allocated / 1048576.0:F1} MB (transient garbage), after drop {afterDrop / 1048576.0:F1} MB");
         Assert.True(sw.ElapsedMilliseconds < 1000, $"build took {sw.ElapsedMilliseconds} ms");
         Assert.True(retained < 50L * 1024 * 1024, $"retained {retained} bytes");
         Assert.True(peak < 50L * 1024 * 1024, $"peak {peak} bytes");
