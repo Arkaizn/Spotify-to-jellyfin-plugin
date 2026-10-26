@@ -685,7 +685,7 @@ public sealed class SyncEngine : IDisposable
                 : DedupeBySong(desired, _ => null);
             bool mirror = sync.Mode != SyncModes.AddOnly && failed.Count == 0;
             int writesBefore = ctx.Outcome.Writes;
-            var jfName = ctx.Settings.NamePrefix + sync.Name;
+            var jfName = SyncDefs.JellyfinName(sync, ctx.Settings.NamePrefix);
             if (sync.JfId is Guid existing && sync.WrittenName is not null && !string.Equals(sync.WrittenName, jfName, StringComparison.Ordinal)
                 && ctx.Settings.OwnerUserId != Guid.Empty && _target.Resolve(existing, jfName, ctx.Settings.OwnerUserId) == existing)
             {

@@ -108,6 +108,9 @@ internal sealed class FakeTarget : IPlaylistTarget
     public int Moves;
     public int Replaces;
 
+    public IReadOnlyList<JfPlaylistInfo> List(Guid ownerId)
+        => Playlists.Select(kv => new JfPlaylistInfo(kv.Key, kv.Value.Name, kv.Value.Items.Count)).ToList();
+
     public Guid? Resolve(Guid? knownId, string name, Guid ownerId)
     {
         if (knownId is Guid k && Playlists.ContainsKey(k))

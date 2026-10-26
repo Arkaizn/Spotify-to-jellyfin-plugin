@@ -37,10 +37,11 @@ public sealed class SpotiSyncService : IDisposable
         Spotify = new SpotifyClient(httpFactory, NamedClient.Default, Store, () => Config.ClientId.Trim(), loggerFactory.CreateLogger<SpotifyClient>());
         Library = new JellyfinLibrarySource(libraryManager);
         Cache = new IndexCache();
+        Target = new JellyfinPlaylistTarget(playlistManager, libraryManager);
         Engine = new SyncEngine(
             Spotify,
             Library,
-            new JellyfinPlaylistTarget(playlistManager, libraryManager),
+            Target,
             Store,
             Cache,
             () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode, Config.RemoveDuplicates),
@@ -59,6 +60,9 @@ public sealed class SpotiSyncService : IDisposable
 
     /// <summary>Gets the library source.</summary>
     public JellyfinLibrarySource Library { get; }
+
+    /// <summary>Gets the Jellyfin playlist writer.</summary>
+    public JellyfinPlaylistTarget Target { get; }
 
     /// <summary>Gets the index cache.</summary>
     public IndexCache Cache { get; }

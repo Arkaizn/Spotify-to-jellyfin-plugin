@@ -90,6 +90,26 @@ public sealed class SyncEdit
     public string? Mode { get; set; }
 
     public bool? Enabled { get; set; }
+
+    /// <summary>Gets or sets an existing Jellyfin playlist to write into (null = keep).</summary>
+    public Guid? JfId { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether to write into a new Jellyfin playlist called <see cref="Name"/> instead.</summary>
+    public bool NewPlaylist { get; set; }
+}
+
+/// <summary>A Jellyfin playlist for the picker, and the sync already writing into it.</summary>
+public sealed class JfPlaylistDto
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public int Count { get; set; }
+
+    public string? UsedBy { get; set; }
+
+    public string? UsedByName { get; set; }
 }
 
 /// <summary>Adds a source to a sync: a public link, or an existing catalog entry.</summary>

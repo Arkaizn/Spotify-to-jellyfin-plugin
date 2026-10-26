@@ -23,6 +23,7 @@ namespace Jellyfin.Plugin.SpotiSync.State;
 [JsonSerializable(typeof(CatalogEntry))]
 [JsonSerializable(typeof(SyncDef))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.SyncEdit))]
+[JsonSerializable(typeof(List<Jellyfin.Plugin.SpotiSync.Api.JfPlaylistDto>))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.SourceAdd))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.SyncTracksDto))]
 [JsonSerializable(typeof(Jellyfin.Plugin.SpotiSync.Api.LoginDto))]

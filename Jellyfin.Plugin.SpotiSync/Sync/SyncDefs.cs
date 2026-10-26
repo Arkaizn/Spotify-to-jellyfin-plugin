@@ -70,6 +70,43 @@ public static class SyncDefs
         return changed;
     }
 
+    /// <summary>The name the Jellyfin playlist of a sync gets.</summary>
+    /// <param name="sync">Sync.</param>
+    /// <param name="prefix">Name prefix from the settings.</param>
+    /// <returns>Name.</returns>
+    public static string JellyfinName(SyncDef sync, string? prefix)
+        => sync.NoPrefix || string.IsNullOrEmpty(prefix) ? sync.Name : prefix + sync.Name;
+
+    /// <summary>
+    /// Points a sync at an existing Jellyfin playlist, by id. The sync takes the playlist's name (so nothing
+    /// gets renamed) and the next run writes into it as if it were new: mirror replaces what is there,
+    /// add only appends the songs that are missing.
+    /// </summary>
+    /// <param name="sync">Sync.</param>
+    /// <param name="playlist">The picked playlist.</param>
+    /// <param name="prefix">Name prefix from the settings.</param>
+    public static void LinkTo(SyncDef sync, JfPlaylistInfo playlist, string? prefix)
+    {
+        bool prefixed = !string.IsNullOrEmpty(prefix) && playlist.Name.StartsWith(prefix, StringComparison.Ordinal) && playlist.Name.Length > prefix.Length;
+        sync.Name = prefixed ? playlist.Name[prefix!.Length..] : playlist.Name;
+        sync.NoPrefix = !prefixed && !string.IsNullOrEmpty(prefix);
+        sync.JfId = playlist.Id;
+        sync.WrittenName = playlist.Name;
+        sync.Written = null;
+    }
+
+    /// <summary>Makes a sync write into a new Jellyfin playlist called <paramref name="name"/> on the next run.</summary>
+    /// <param name="sync">Sync.</param>
+    /// <param name="name">Name.</param>
+    public static void Unlink(SyncDef sync, string name)
+    {
+        sync.Name = name;
+        sync.NoPrefix = false;
+        sync.JfId = null;
+        sync.WrittenName = null;
+        sync.Written = null;
+    }
+
     /// <summary>The sources of a sync in the order they are written.</summary>
     /// <param name="catalog">Catalog.</param>
     /// <param name="sync">Sync.</param>
