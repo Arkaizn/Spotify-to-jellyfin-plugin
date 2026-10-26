@@ -216,6 +216,12 @@ public sealed class SyncDef
     /// <summary>Gets or sets the Jellyfin playlist id.</summary>
     public Guid? JfId { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether <see cref="Name"/> is used as is, without the name prefix
+    /// from the settings (set when an existing Jellyfin playlist was picked, so it keeps its name).
+    /// </summary>
+    public bool NoPrefix { get; set; }
+
     /// <summary>Gets or sets the hash of the item list last written.</summary>
     public string? Written { get; set; }
 

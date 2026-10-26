@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -309,31 +310,97 @@ public class SpotiSyncController : ControllerBase
 
     // ------------------------------------------------------------------ syncs (Jellyfin playlists built from sources)
 
-    /// <summary>Creates a sync (a Jellyfin playlist built from Spotify playlists).</summary>
+    /// <summary>Lists the Jellyfin playlists of the owner user, to pick one a sync writes into.</summary>
+    /// <returns>Playlists, with the sync already using each one.</returns>
+    [HttpGet("JellyfinPlaylists")]
+    public async Task<ActionResult> GetJellyfinPlaylists()
+    {
+        var owner = SpotiSyncService.Config.OwnerUserId;
+        var result = new List<JfPlaylistDto>();
+        if (owner == Guid.Empty)
+        {
+            return Json(result, StateJsonContext.Default.ListJfPlaylistDto);
+        }
+
+        var catalog = await _service.Store.LoadCatalogAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+        foreach (var p in _service.Target.List(owner))
+        {
+            var user = catalog.Syncs.Find(x => x.JfId == p.Id);
+            result.Add(new JfPlaylistDto { Id = p.Id, Name = p.Name, Count = p.Count, UsedBy = user?.Id, UsedByName = user?.Name });
+        }
+
+        return Json(result, StateJsonContext.Default.ListJfPlaylistDto);
+    }
+
+    /// <summary>Creates a sync (a Jellyfin playlist built from Spotify playlists): a new playlist (name) or an existing one (jfId).</summary>
     /// <returns>The sync.</returns>
     [HttpPost("Syncs")]
     public async Task<ActionResult> CreateSync()
     {
         var req = await ReadAsync(StateJsonContext.Default.SyncEdit).ConfigureAwait(false);
         var name = req?.Name?.Trim();
-        if (string.IsNullOrEmpty(name))
+        JfPlaylistInfo? picked = null;
+        if (req?.JfId is Guid jf)
+        {
+            (picked, var problem) = FindJellyfinPlaylist(jf);
+            if (problem is not null)
+            {
+                return BadRequest(problem);
+            }
+        }
+        else if (string.IsNullOrEmpty(name))
         {
             return BadRequest("Give the Jellyfin playlist a name.");
         }
 
-        var sync = new SyncDef { Id = SyncDefs.NewId(), Name = name, Mode = SyncModes.Normalize(req!.Mode ?? SpotiSyncService.Config.DefaultMode) };
-        await UpdateCatalogAsync(c => c.Syncs.Add(sync)).ConfigureAwait(false);
+        var sync = new SyncDef { Id = SyncDefs.NewId(), Name = name ?? string.Empty, Mode = SyncModes.Normalize(req!.Mode ?? SpotiSyncService.Config.DefaultMode) };
+        string? conflict = null;
+        await UpdateCatalogAsync(c =>
+        {
+            if (picked is not null)
+            {
+                conflict = UsedByOther(c, null, picked.Id);
+                if (conflict is not null)
+                {
+                    return;
+                }
+
+                SyncDefs.LinkTo(sync, picked, SpotiSyncService.Config.NamePrefix);
+            }
+
+            c.Syncs.Add(sync);
+        }).ConfigureAwait(false);
+        if (conflict is not null)
+        {
+            return Conflict(conflict);
+        }
+
         return Json(sync, StateJsonContext.Default.SyncDef);
     }
 
-    /// <summary>Renames a sync, changes its mode or switches it on/off.</summary>
+    /// <summary>Renames a sync, changes its mode, switches it on/off or changes the Jellyfin playlist it writes into.</summary>
     /// <param name="id">Sync id.</param>
     /// <returns>The sync.</returns>
     [HttpPost("Syncs/{id}")]
     public async Task<ActionResult> EditSync([FromRoute] string id)
     {
         var req = await ReadAsync(StateJsonContext.Default.SyncEdit).ConfigureAwait(false);
+        JfPlaylistInfo? picked = null;
+        if (req?.JfId is Guid jf)
+        {
+            (picked, var problem) = FindJellyfinPlaylist(jf);
+            if (problem is not null)
+            {
+                return BadRequest(problem);
+            }
+        }
+        else if (req is { NewPlaylist: true } && string.IsNullOrWhiteSpace(req.Name))
+        {
+            return BadRequest("Give the new Jellyfin playlist a name.");
+        }
+
         SyncDef? sync = null;
+        string? conflict = null;
         await UpdateCatalogAsync(c =>
         {
             sync = c.Syncs.Find(x => x.Id == id);
@@ -342,7 +409,24 @@ public class SpotiSyncController : ControllerBase
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(req.Name))
+            if (picked is not null)
+            {
+                if (sync.JfId != picked.Id)
+                {
+                    conflict = UsedByOther(c, sync, picked.Id);
+                    if (conflict is not null)
+                    {
+                        return;
+                    }
+
+                    SyncDefs.LinkTo(sync, picked, SpotiSyncService.Config.NamePrefix);
+                }
+            }
+            else if (req.NewPlaylist)
+            {
+                SyncDefs.Unlink(sync, req.Name!.Trim());
+            }
+            else if (!string.IsNullOrWhiteSpace(req.Name))
             {
                 sync.Name = req.Name.Trim();
             }
@@ -357,6 +441,11 @@ public class SpotiSyncController : ControllerBase
                 sync.Paused = !en;
             }
         }).ConfigureAwait(false);
+        if (conflict is not null)
+        {
+            return Conflict(conflict);
+        }
+
         if (sync is null)
         {
             return NotFound();
@@ -364,6 +453,24 @@ public class SpotiSyncController : ControllerBase
 
         QueueRun(rematch: true);
         return Json(sync, StateJsonContext.Default.SyncDef);
+    }
+
+    private (JfPlaylistInfo? Playlist, string? Problem) FindJellyfinPlaylist(Guid id)
+    {
+        var owner = SpotiSyncService.Config.OwnerUserId;
+        if (owner == Guid.Empty)
+        {
+            return (null, "Pick the Jellyfin user in Settings first.");
+        }
+
+        var p = _service.Target.List(owner).FirstOrDefault(x => x.Id == id);
+        return p is null ? (null, "That Jellyfin playlist does not exist (anymore). Reload the page.") : (p, null);
+    }
+
+    private static string? UsedByOther(Catalog catalog, SyncDef? self, Guid jfId)
+    {
+        var other = catalog.Syncs.Find(x => x != self && x.JfId == jfId);
+        return other is null ? null : "\"" + other.Name + "\" already writes into that Jellyfin playlist. Pick another one or change that sync first.";
     }
 
     /// <summary>Deletes a sync. The Jellyfin playlist and the sources stay.</summary>

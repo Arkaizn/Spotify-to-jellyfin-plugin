@@ -27,6 +27,20 @@ public sealed class JellyfinPlaylistTarget : IPlaylistTarget
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<JfPlaylistInfo> List(Guid ownerId)
+    {
+        var list = new List<JfPlaylistInfo>();
+        foreach (var p in _playlists.GetPlaylists(ownerId))
+        {
+            // LinkedChildren is in memory already; no item lookups.
+            list.Add(new JfPlaylistInfo(p.Id, p.Name, p.LinkedChildren.Length));
+        }
+
+        list.Sort((a, b) => SyncEngine.NaturalCompare(a.Name, b.Name));
+        return list;
+    }
+
+    /// <inheritdoc />
     public Guid? Resolve(Guid? knownId, string name, Guid ownerId)
     {
         if (knownId is Guid k && _library.GetItemById(k) is Playlist)

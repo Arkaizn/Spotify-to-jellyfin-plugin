@@ -37,7 +37,10 @@ can still sync, without connecting an account at all:
   No song limit, but updates need a new export.
 
 **Jellyfin playlists built from several Spotify playlists:** on the *Playlists* tab every entry
-is one Jellyfin playlist. Create one (name + Mirror / Add only), open it and add its sources: public
+is one Jellyfin playlist. Create one: pick an existing Jellyfin playlist from the list or choose
+*New playlist* and type a name, then Mirror / Add only (Mirror replaces what an existing playlist
+holds, Add only keeps it and adds the missing songs). The playlist a sync writes into can be changed
+later in its detail view (*Writes into*). Open it and add its sources: public
 links, imported files or playlists of your connected account. The songs of all sources are combined
 in the order shown (↑ ↓ to change it), each song once. The song list shows where every song comes
 from, in tabs *In Jellyfin*, *Duplicates (skipped)*, *Need a look*, *Not found* and *Ignored*.

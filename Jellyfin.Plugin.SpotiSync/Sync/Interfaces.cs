@@ -12,6 +12,12 @@ namespace Jellyfin.Plugin.SpotiSync.Sync;
 /// <param name="FieldsRejected">True when the request had to be repeated without "fields".</param>
 public sealed record PlaylistItemsResult(List<SpTrack> Tracks, bool FieldsRejected);
 
+/// <summary>A Jellyfin playlist as shown in the picker.</summary>
+/// <param name="Id">Playlist id.</param>
+/// <param name="Name">Name.</param>
+/// <param name="Count">Number of entries.</param>
+public sealed record JfPlaylistInfo(Guid Id, string Name, int Count);
+
 /// <summary>Read access to Spotify (implemented by <see cref="SpotifyClient"/>, faked in tests).</summary>
 public interface ISpotifySource
 {
@@ -86,6 +92,11 @@ public interface ILibrarySource
 /// <summary>Write access to Jellyfin playlists.</summary>
 public interface IPlaylistTarget
 {
+    /// <summary>Playlists the owner can see, for picking one to sync into.</summary>
+    /// <param name="ownerId">Owner user.</param>
+    /// <returns>Playlists.</returns>
+    IReadOnlyList<JfPlaylistInfo> List(Guid ownerId);
+
     /// <summary>Finds the playlist to sync into: <paramref name="knownId"/> if it still exists, else one named <paramref name="name"/>.</summary>
     /// <param name="knownId">Previously used playlist id.</param>
     /// <param name="name">Playlist name.</param>
