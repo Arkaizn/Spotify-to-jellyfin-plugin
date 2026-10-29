@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +18,8 @@ namespace Jellyfin.Plugin.SpotiSync.Sync;
 /// <param name="NamePrefix">Prefix for Jellyfin playlist names.</param>
 /// <param name="DefaultMode">Mode for newly discovered playlists.</param>
 /// <param name="RemoveDuplicates">Write each song only once per Jellyfin playlist (same title, main artist and version).</param>
-public sealed record SyncSettings(Guid OwnerUserId, string NamePrefix, string DefaultMode, bool RemoveDuplicates = true);
+/// <param name="ScanLibraries">Library ids the scan for new files covers (null = all music libraries).</param>
+public sealed record SyncSettings(Guid OwnerUserId, string NamePrefix, string DefaultMode, bool RemoveDuplicates = true, IReadOnlyCollection<string>? ScanLibraries = null);
 
 /// <summary>Counters of one run (also used by tests and the benchmark).</summary>
 public sealed class SyncOutcome
@@ -62,6 +64,8 @@ public sealed class SyncEngine : IDisposable
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly IPublicPlaylistSource? _public;
+    private double _pBase;
+    private double _pScale = 1;
     private int _dedupeRequested;
 
     /// <summary>Initializes a new instance of the <see cref="SyncEngine"/> class.</summary>
@@ -91,6 +95,9 @@ public sealed class SyncEngine : IDisposable
     /// <summary>Makes the next run also clean up duplicates already in add-only playlists.</summary>
     public void RequestDedupe() => Interlocked.Exchange(ref _dedupeRequested, 1);
 
+    /// <summary>Gets or sets the library scanner used by <see cref="SyncMode.ScanLibrary"/>.</summary>
+    public ILibraryScanner? Scanner { get; set; }
+
     /// <summary>Gets the live status.</summary>
     public SyncStatus Status { get; } = new();
 
@@ -115,7 +122,16 @@ public sealed class SyncEngine : IDisposable
         string result = "failed";
         try
         {
-            await RunCoreAsync(mode, outcome, progress, ct).ConfigureAwait(false);
+            _pBase = 0;
+            _pScale = 1;
+            if (mode == SyncMode.ScanLibrary)
+            {
+                await ScanLibraryAsync(progress, ct).ConfigureAwait(false);
+                _pBase = ScanShare;
+                _pScale = (100 - ScanShare) / 100;
+            }
+
+            await RunCoreAsync(mode == SyncMode.ScanLibrary ? SyncMode.RematchOnly : mode, outcome, progress, ct).ConfigureAwait(false);
             result = string.Format(
                 CultureInfo.InvariantCulture,
                 "{0} playlists, {1} downloaded, {2} tracks matched, {3} playlist writes in {4:0.0}s{5}",
@@ -126,7 +142,7 @@ public sealed class SyncEngine : IDisposable
                 sw.Elapsed.TotalSeconds,
                 outcome.SpotifyError is null ? string.Empty : " (Spotify: " + outcome.SpotifyError + ")");
             _logger.LogInformation("SpotiSync {Mode} finished: {Result}", mode, result);
-            Status.Log("info", (mode == SyncMode.Full ? "Sync" : "Rematch") + " done: " + result);
+            Status.Log("info", (mode == SyncMode.Full ? "Sync" : mode == SyncMode.ScanLibrary ? "Scan for new files + rematch" : "Rematch") + " done: " + result);
             return outcome;
         }
         catch (OperationCanceledException)
@@ -149,6 +165,84 @@ public sealed class SyncEngine : IDisposable
             Status.Finish(result);
             _runLock.Release();
         }
+    }
+
+    /// <summary>Share of the progress bar taken by the library scan (it is by far the slowest part).</summary>
+    private const double ScanShare = 80;
+
+    /// <summary>Changes this long before the last check still count (clock differences to a NAS, copies in progress).</summary>
+    private static readonly TimeSpan ScanOverlap = TimeSpan.FromMinutes(5);
+
+    /// <summary>How far back the very first check looks when Jellyfin's last full scan is unknown.</summary>
+    private static readonly TimeSpan FirstScanLookBack = TimeSpan.FromDays(1);
+
+    /// <summary>The libraries the quick scan covers: the chosen ones, or all music libraries.</summary>
+    /// <param name="all">All libraries.</param>
+    /// <param name="chosen">Chosen library ids (null = music libraries).</param>
+    /// <returns>Libraries to scan.</returns>
+    public static List<ScanLibrary> ScanSelection(IReadOnlyList<ScanLibrary> all, IReadOnlyCollection<string>? chosen)
+        => all.Where(l => chosen is null ? l.IsMusic : chosen.Contains(l.Id)).ToList();
+
+    private async Task ScanLibraryAsync(IProgress<double>? progress, CancellationToken ct)
+    {
+        if (Scanner is null)
+        {
+            throw new InvalidOperationException("Library scanning is not available.");
+        }
+
+        var libs = ScanSelection(Scanner.Libraries(), _settings().ScanLibraries);
+        if (libs.Count == 0)
+        {
+            Status.Log("warn", "No library is chosen for the scan (Settings → Scan for new files)");
+            return;
+        }
+
+        var catalog = await _store.LoadCatalogAsync(ct).ConfigureAwait(false);
+        var fallback = Scanner.LastFullScanUtc() ?? DateTime.UtcNow - FirstScanLookBack;
+        for (int i = 0; i < libs.Count; i++)
+        {
+            var lib = libs[i];
+            double from = ScanShare * i / libs.Count, span = ScanShare / libs.Count;
+            var sw = Stopwatch.StartNew();
+            var started = DateTime.UtcNow;
+            var since = (catalog.ScannedAt.TryGetValue(lib.Id, out var last) ? last : fallback) - ScanOverlap;
+            Status.Step("Checking " + lib.Name + " for new files", from);
+            progress?.Report(from);
+            var found = await Task.Run(() => ChangeFinder.Find(lib.Locations, since, ct), ct).ConfigureAwait(false);
+            var walk = sw.Elapsed;
+            int refreshed = 0;
+            if (found.Dirs.Count > 0)
+            {
+                var label = "Updating " + found.Dirs.Count.ToString(CultureInfo.InvariantCulture) + (found.Dirs.Count == 1 ? " folder in " : " folders in ") + lib.Name;
+                refreshed = await Scanner.RefreshAsync(
+                    lib,
+                    found.Dirs,
+                    new InlineProgress(p =>
+                    {
+                        var pct = from + (span * Math.Clamp(p, 0, 100) / 100);
+                        Status.Step(label, pct);
+                        progress?.Report(pct);
+                    }),
+                    ct).ConfigureAwait(false);
+            }
+
+            catalog.ScannedAt[lib.Id] = started;
+            var text = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}: checked {1} files in {2} folders in {3:0.0}s, ",
+                lib.Name,
+                found.FilesChecked,
+                found.DirsChecked,
+                walk.TotalSeconds)
+                + (found.Dirs.Count == 0
+                    ? "nothing new"
+                    : string.Format(CultureInfo.InvariantCulture, "Jellyfin updated {0} {1} in {2:0.0}s", refreshed, refreshed == 1 ? "folder" : "folders", (sw.Elapsed - walk).TotalSeconds));
+            _logger.LogInformation("SpotiSync scan: {Text}", text);
+            Status.Log("info", text);
+        }
+
+        await _store.SaveCatalogAsync(catalog, ct).ConfigureAwait(false);
+        Status.Step("Matching", ScanShare);
     }
 
     private async Task RunCoreAsync(SyncMode mode, SyncOutcome outcome, IProgress<double>? progress, CancellationToken ct)
@@ -247,8 +341,8 @@ public sealed class SyncEngine : IDisposable
                 await Task.Yield();
                 var entry = enabled[i];
                 double pct = 100.0 * i / Math.Max(1, enabled.Count);
-                Status.Step(entry.Name, pct);
-                progress?.Report(pct);
+                Status.Step(entry.Name, _pBase + (pct * _pScale));
+                progress?.Report(_pBase + (pct * _pScale));
                 try
                 {
                     catalogDirty |= await SyncPlaylistAsync(entry, ctx, pass == 0, ct).ConfigureAwait(false);
@@ -1160,4 +1254,12 @@ public sealed class SyncEngine : IDisposable
 
         public Matcher? Matcher { get; set; }
     }
+}
+
+/// <summary>Reports progress on the calling thread (unlike <see cref="Progress{T}"/>, which posts and can reorder).</summary>
+/// <param name="report">Callback.</param>
+public sealed class InlineProgress(Action<double> report) : IProgress<double>
+{
+    /// <inheritdoc />
+    public void Report(double value) => report(value);
 }

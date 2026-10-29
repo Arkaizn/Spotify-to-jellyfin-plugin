@@ -12,6 +12,33 @@ namespace Jellyfin.Plugin.SpotiSync.Sync;
 /// <param name="FieldsRejected">True when the request had to be repeated without "fields".</param>
 public sealed record PlaylistItemsResult(List<SpTrack> Tracks, bool FieldsRejected);
 
+/// <summary>A Jellyfin library for the quick scan.</summary>
+/// <param name="Id">Library id.</param>
+/// <param name="Name">Name.</param>
+/// <param name="IsMusic">Whether it is a music library (scanned by default).</param>
+/// <param name="Locations">Folders of the library.</param>
+public sealed record ScanLibrary(string Id, string Name, bool IsMusic, IReadOnlyList<string> Locations);
+
+/// <summary>Lets Jellyfin pick up changed folders, without scanning whole libraries.</summary>
+public interface ILibraryScanner
+{
+    /// <summary>The libraries.</summary>
+    /// <returns>Libraries.</returns>
+    IReadOnlyList<ScanLibrary> Libraries();
+
+    /// <summary>When Jellyfin's own full library scan last started successfully, if known.</summary>
+    /// <returns>UTC time or null.</returns>
+    DateTime? LastFullScanUtc();
+
+    /// <summary>Has Jellyfin refresh the given folders (new, changed and removed files).</summary>
+    /// <param name="library">Library.</param>
+    /// <param name="dirs">Changed folders, shallowest first.</param>
+    /// <param name="progress">Progress 0-100.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Number of folders Jellyfin refreshed.</returns>
+    Task<int> RefreshAsync(ScanLibrary library, IReadOnlyList<string> dirs, IProgress<double> progress, CancellationToken ct);
+}
+
 /// <summary>A Jellyfin playlist as shown in the picker.</summary>
 /// <param name="Id">Playlist id.</param>
 /// <param name="Name">Name.</param>

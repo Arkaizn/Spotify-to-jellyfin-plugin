@@ -9,6 +9,8 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Playlists;
+using MediaBrowser.Model.IO;
+using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SpotiSync.Server;
@@ -24,12 +26,16 @@ public sealed class SpotiSyncService : IDisposable
     /// <param name="httpFactory">HTTP client factory.</param>
     /// <param name="libraryManager">Library manager.</param>
     /// <param name="playlistManager">Playlist manager.</param>
+    /// <param name="fileSystem">File system (for library scans).</param>
+    /// <param name="services">Service provider (the task manager is looked up when a scan needs it).</param>
     /// <param name="loggerFactory">Logger factory.</param>
     public SpotiSyncService(
         IApplicationPaths paths,
         IHttpClientFactory httpFactory,
         ILibraryManager libraryManager,
         IPlaylistManager playlistManager,
+        IFileSystem fileSystem,
+        IServiceProvider services,
         ILoggerFactory loggerFactory)
     {
         // Under plugins/configurations so the data survives plugin updates.
@@ -44,9 +50,12 @@ public sealed class SpotiSyncService : IDisposable
             Target,
             Store,
             Cache,
-            () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode, Config.RemoveDuplicates),
+            () => new SyncSettings(Config.OwnerUserId, Config.NamePrefix ?? string.Empty, Config.DefaultMode, Config.RemoveDuplicates, Config.ScanLibraries),
             loggerFactory.CreateLogger<SyncEngine>(),
-            Public = new SpotifyPublicClient(httpFactory, NamedClient.Default));
+            Public = new SpotifyPublicClient(httpFactory, NamedClient.Default))
+        {
+            Scanner = new JellyfinLibraryScanner(libraryManager, fileSystem, () => services.GetService(typeof(ITaskManager)) as ITaskManager),
+        };
     }
 
     /// <summary>Gets the state store.</summary>

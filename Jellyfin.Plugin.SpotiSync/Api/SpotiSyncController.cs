@@ -81,6 +81,8 @@ public class SpotiSyncController : ControllerBase
             DefaultMode = cfg.DefaultMode,
             NamePrefix = cfg.NamePrefix,
             RemoveDuplicates = cfg.RemoveDuplicates,
+            ScanEvery = ScanEveryMinutes(),
+            Libraries = LibraryList(cfg.ScanLibraries),
             RedirectUri = RedirectUri(),
             Connected = !string.IsNullOrEmpty(auth.RefreshToken),
             SpotifyUser = catalog.MeName ?? catalog.MeId,
@@ -109,7 +111,15 @@ public class SpotiSyncController : ControllerBase
         cfg.DefaultMode = SyncModes.Normalize(dto.DefaultMode);
         cfg.NamePrefix = dto.NamePrefix ?? string.Empty;
         cfg.RemoveDuplicates = dto.RemoveDuplicates;
+        if (dto.ScanLibraries is not null)
+        {
+            // Exactly the music libraries = the default, which also covers music libraries added later.
+            var music = LibraryList(null).Where(l => l.Music).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+            cfg.ScanLibraries = music.SetEquals(dto.ScanLibraries) ? null : dto.ScanLibraries.Distinct(StringComparer.Ordinal).ToArray();
+        }
+
         plugin.SaveConfiguration();
+        SetScanEvery(dto.ScanEvery);
         return await GetSettings().ConfigureAwait(false);
     }
 
@@ -1006,12 +1016,18 @@ public class SpotiSyncController : ControllerBase
 
     // ------------------------------------------------------------------ sync
 
-    /// <summary>Queues a sync ("full") or a rematch ("rematch") through Jellyfin's task manager.</summary>
+    /// <summary>Queues a sync ("full"), a rematch ("rematch") or a music library scan + rematch ("scan") through Jellyfin's task manager.</summary>
     /// <returns>Accepted.</returns>
     [HttpPost("Sync")]
     public async Task<ActionResult> Sync()
     {
         var req = await ReadAsync(StateJsonContext.Default.SyncRequest).ConfigureAwait(false);
+        if (string.Equals(req?.Mode, "scan", StringComparison.OrdinalIgnoreCase))
+        {
+            _tasks.QueueScheduledTask<ScanLibraryTask>();
+            return Accepted();
+        }
+
         QueueRun(string.Equals(req?.Mode, "rematch", StringComparison.OrdinalIgnoreCase));
         return Accepted();
     }
@@ -1032,7 +1048,7 @@ public class SpotiSyncController : ControllerBase
         var dto = new StatusDto
         {
             Running = s.Running,
-            Mode = s.Mode == SyncMode.Full ? "full" : "rematch",
+            Mode = s.Mode switch { SyncMode.Full => "full", SyncMode.ScanLibrary => "scan", _ => "rematch" },
             Current = s.Current,
             Progress = s.Progress,
             StartedAt = s.StartedAt,
@@ -1046,6 +1062,36 @@ public class SpotiSyncController : ControllerBase
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private List<LibraryDto> LibraryList(string[]? chosen)
+    {
+        var all = _service.Engine.Scanner?.Libraries() ?? [];
+        var selected = SyncEngine.ScanSelection(all, chosen).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        return all.Select(l => new LibraryDto { Id = l.Id, Name = l.Name, Music = l.IsMusic, Selected = selected.Contains(l.Id) }).ToList();
+    }
+
+    private IScheduledTaskWorker? ScanWorker() => _tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask is ScanLibraryTask);
+
+    private int ScanEveryMinutes()
+    {
+        var trigger = ScanWorker()?.Triggers.FirstOrDefault(t => t.Type == TaskTriggerInfoType.IntervalTrigger && t.IntervalTicks is > 0);
+        return trigger is null ? 0 : (int)(trigger.IntervalTicks!.Value / TimeSpan.TicksPerMinute);
+    }
+
+    private void SetScanEvery(int minutes)
+    {
+        var worker = ScanWorker();
+        if (worker is null || minutes == ScanEveryMinutes())
+        {
+            return;
+        }
+
+        // Keeps any other trigger the admin set up in Scheduled Tasks; replaces only the interval.
+        var others = worker.Triggers.Where(t => t.Type != TaskTriggerInfoType.IntervalTrigger);
+        worker.Triggers = minutes > 0
+            ? others.Append(new TaskTriggerInfo { Type = TaskTriggerInfoType.IntervalTrigger, IntervalTicks = TimeSpan.FromMinutes(Math.Max(5, minutes)).Ticks }).ToArray()
+            : others.ToArray();
+    }
 
     private void QueueRun(bool rematch)
     {

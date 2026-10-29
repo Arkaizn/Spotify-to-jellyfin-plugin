@@ -11,6 +11,9 @@ public enum SyncMode
 
     /// <summary>No Spotify calls: rematch cached tracks and write playlists.</summary>
     RematchOnly,
+
+    /// <summary>Scan the Jellyfin music libraries for new/changed files first, then rematch.</summary>
+    ScanLibrary,
 }
 
 /// <summary>One log line shown on the dashboard.</summary>
