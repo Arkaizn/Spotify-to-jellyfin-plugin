@@ -84,3 +84,38 @@ public class RematchTask : IScheduledTask
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
 }
+
+/// <summary>Quick scan for new files in the chosen libraries, then rematch (no Spotify calls).</summary>
+public class ScanLibraryTask : IScheduledTask
+{
+    /// <summary>Task key.</summary>
+    public const string TaskKey = "SpotiSyncScanLibrary";
+
+    private readonly SpotiSyncService _service;
+
+    /// <summary>Initializes a new instance of the <see cref="ScanLibraryTask"/> class.</summary>
+    /// <param name="service">Service.</param>
+    public ScanLibraryTask(SpotiSyncService service)
+    {
+        _service = service;
+    }
+
+    /// <inheritdoc />
+    public string Name => "SpotiSync: scan for new files and rematch";
+
+    /// <inheritdoc />
+    public string Key => TaskKey;
+
+    /// <inheritdoc />
+    public string Description => "Looks for new, changed and removed files in the libraries chosen in SpotiSync's settings (by file date), lets Jellyfin update only those folders, then matches the Spotify tracks again.";
+
+    /// <inheritdoc />
+    public string Category => "SpotiSync";
+
+    /// <inheritdoc />
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        => _service.Engine.RunAsync(SyncMode.ScanLibrary, progress, cancellationToken);
+
+    /// <inheritdoc />
+    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
+}

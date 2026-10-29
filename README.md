@@ -45,6 +45,14 @@ links, imported files or playlists of your connected account. The songs of all s
 in the order shown (↑ ↓ to change it), each song once. The song list shows where every song comes
 from, in tabs *In Jellyfin*, *Duplicates (skipped)*, *Need a look*, *Not found* and *Ignored*.
 
+**Scan library (new files only):** the *Scan library* button next to *Sync now* checks the libraries
+chosen under *Settings → Scan for new files* (all music libraries by default) by file and folder dates
+only, and lets Jellyfin update just the folders where something was added, changed or removed since the
+last check. A new artist folder at the top of a library does not trigger a scan of the whole library.
+Then the Spotify tracks are matched again so new songs land in the playlists. It can also run by itself
+(every 15 minutes … once a day); Jellyfin's own full scan can then run rarely, e.g. weekly at night.
+Measured in Jellyfin 12.2: a check with nothing new reads only file dates and gives Jellyfin no work.
+
 - *More than 100 songs without Premium:* keep "Rock 1", "Rock 2", … (up to 100 songs each) public on
   Spotify and add all of them to one Jellyfin playlist "Rock".
 - *Inbox:* add a small public "Rock inbox" playlist to a Jellyfin playlist in *Add only* mode. Once a

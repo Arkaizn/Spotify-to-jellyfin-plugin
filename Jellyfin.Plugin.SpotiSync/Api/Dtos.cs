@@ -27,7 +27,15 @@ public sealed class SettingsDto
 
     public bool RemoveDuplicates { get; set; }
 
+    /// <summary>Gets or sets the library ids the scan for new files covers.</summary>
+    public List<string>? ScanLibraries { get; set; }
+
+    /// <summary>Gets or sets how often the scan for new files runs by itself, in minutes (0 = only by hand).</summary>
+    public int ScanEvery { get; set; }
+
     // read-only fields below
+    public List<LibraryDto>? Libraries { get; set; }
+
     public string? RedirectUri { get; set; }
 
     public bool Connected { get; set; }
@@ -37,6 +45,17 @@ public sealed class SettingsDto
     public DateTimeOffset? RateLimitedUntil { get; set; }
 
     public List<UserDto>? Users { get; set; }
+}
+
+public sealed class LibraryDto
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public bool Music { get; set; }
+
+    public bool Selected { get; set; }
 }
 
 public sealed class StatusDto

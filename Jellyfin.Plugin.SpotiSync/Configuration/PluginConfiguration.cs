@@ -29,4 +29,12 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets a prefix put in front of Jellyfin playlist names (empty = same name).</summary>
     public string NamePrefix { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the ids of the libraries the scan for new files covers. Null = all music libraries
+    /// (also ones added later).
+    /// </summary>
+#pragma warning disable CA1819 // XML-serialized configuration
+    public string[]? ScanLibraries { get; set; }
+#pragma warning restore CA1819
 }

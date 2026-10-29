@@ -279,6 +279,9 @@ public sealed class Catalog
 
     /// <summary>Gets or sets the syncs: Jellyfin playlists built from one or more sources.</summary>
     public List<SyncDef> Syncs { get; set; } = [];
+
+    /// <summary>Gets or sets when each library was last checked for new files (library id -> UTC start time).</summary>
+    public Dictionary<string, DateTime> ScannedAt { get; set; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>A manual decision for one Spotify track, applied in every playlist on every sync.</summary>

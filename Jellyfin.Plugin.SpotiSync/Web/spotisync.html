@@ -87,6 +87,8 @@
 .ss-row .n{display:none}
 .ss-row .a{justify-content:flex-start}
 }
+.ss-libs { display: flex; flex-direction: column; gap: .35em; margin: .6em 0 .4em; }
+.ss-libs label { font-weight: normal; display: flex; gap: .5em; align-items: center; }
 .ss-tgt { display: flex; gap: .5em; align-items: center; flex-wrap: wrap; margin: -.3em 0 .8em; opacity: .9; }
 </style>
 <div data-role="content"><div class="content-primary">
@@ -95,6 +97,7 @@
   <span id="ssConn" class="ss-pill">&hellip;</span>
   <div class="ss-actions">
     <button is="emby-button" type="button" class="raised button-submit" id="ssSync"><span>Sync now</span></button>
+    <button is="emby-button" type="button" class="raised" id="ssScan" title="Find new, changed and removed files in the libraries chosen in Settings, let Jellyfin update only those folders, then match the Spotify songs again"><span>Scan library</span></button>
     <button is="emby-button" type="button" class="raised" id="ssRematch" title="Match the cached Spotify tracks against the library again, without contacting Spotify"><span>Rematch</span></button>
   </div>
 </div>
@@ -179,6 +182,12 @@
     <label for="ssPrefix">Jellyfin playlist name prefix (optional)</label>
     <input id="ssPrefix" class="ss-in" autocomplete="off">
     <div class="fd">An existing Jellyfin playlist with the same name is taken over.</div>
+    <h3 style="margin:1.6em 0 .2em">Scan for new files</h3>
+    <div class="fd" style="margin-top:0">The <b>Scan library</b> button only looks at file dates in these libraries and lets Jellyfin update just the folders where something was added, changed or removed since the last check, instead of scanning everything. Then the songs are matched again.</div>
+    <div id="ssLibs" class="ss-libs"></div>
+    <label for="ssScanEvery">Also run it by itself</label>
+    <select id="ssScanEvery" class="ss-in"><option value="0">No, only with the button</option><option value="15">Every 15 minutes</option><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="1440">Once a day</option></select>
+    <div class="fd">Jellyfin's own full scan (Scheduled Tasks &rarr; Scan Media Library) still cleans up everything else; it can run much less often now, e.g. once a week at night.</div>
     <div style="margin-top:1.5em;display:flex;gap:.6em;flex-wrap:wrap">
       <button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button>
       <button is="emby-button" type="button" class="raised" id="ssLogin"><span>Connect Spotify</span></button>
@@ -271,13 +280,14 @@ function renderStatus(s) {
   if (s.running) {
     run.classList.remove('hide');
     run.querySelector('i').style.width = (s.progress || 0) + '%';
-    run.querySelector('span').textContent = (s.mode === 'rematch' ? 'Rematching' : 'Syncing') + (s.current ? ': ' + s.current : '') + ' ' + Math.round(s.progress || 0) + '%';
+    var scanning = s.mode === 'scan' && /^(Checking|Updating)/.test(s.current || '');
+    run.querySelector('span').textContent = (scanning ? s.current : (s.mode === 'rematch' || s.mode === 'scan' ? 'Matching' : 'Syncing') + (s.current ? ': ' + s.current : '')) + ' ' + Math.round(s.progress || 0) + '%';
     expectUntil = 0;
   } else {
     run.classList.add('hide');
     if (wasRunning) { refreshData(); }
   }
-  Q('#ssSync').disabled = Q('#ssRematch').disabled = !!s.running;
+  Q('#ssSync').disabled = Q('#ssRematch').disabled = Q('#ssScan').disabled = !!s.running;
   wasRunning = !!s.running;
 }
 
@@ -519,6 +529,13 @@ function renderSettings() {
   Q('#ssPrefix').value = s.namePrefix || '';
   Q('#ssMode').value = s.defaultMode === 'add' ? 'add' : 'mirror';
   Q('#ssDedupe').checked = !!s.removeDuplicates;
+  var libs = s.libraries || [];
+  Q('#ssLibs').innerHTML = libs.length ? libs.map(function (l) {
+    return '<label><input type="checkbox" value="' + esc(l.id) + '"' + (l.selected ? ' checked' : '') + '> ' + esc(l.name) + (l.music ? ' <span class="ss-src">music</span>' : '') + '</label>';
+  }).join('') : '<div class="fd">No libraries found.</div>';
+  var every = String(s.scanEvery || 0), sel = Q('#ssScanEvery');
+  if (!Array.prototype.some.call(sel.options, function (o) { return o.value === every; })) { sel.insertAdjacentHTML('beforeend', '<option value="' + esc(every) + '">Every ' + esc(every) + ' minutes</option>'); }
+  sel.value = every;
   var r = s.redirectUri || '';
   Q('#ssRedirect').textContent = r;
   Q('#ssRedirWarn').textContent = /^http:\/\/(?!127\.0\.0\.1|\[::1\])/.test(r) ? 'This is not https: Spotify will reject it. Set the public https URL of your server above (e.g. behind a reverse proxy).' : '';
@@ -531,8 +548,10 @@ function renderSettings() {
 function saveSettings() {
   var body = {
     clientId: Q('#ssClient').value.trim(), publicUrl: Q('#ssPublic').value.trim(), namePrefix: Q('#ssPrefix').value,
-    defaultMode: Q('#ssMode').value, removeDuplicates: Q('#ssDedupe').checked, ownerUserId: Q('#ssOwner').value || '00000000-0000-0000-0000-000000000000'
+    defaultMode: Q('#ssMode').value, removeDuplicates: Q('#ssDedupe').checked, ownerUserId: Q('#ssOwner').value || '00000000-0000-0000-0000-000000000000',
+    scanEvery: parseInt(Q('#ssScanEvery').value, 10) || 0
   };
+  if (settings && settings.libraries) { body.scanLibraries = Array.prototype.map.call(page.querySelectorAll('#ssLibs input:checked'), function (c) { return c.value; }); }
   return post('Settings', body).then(function () { delete cache.Settings; loadJfLists(); return loadSettings(); }).then(function () { toast('Settings saved'); });
 }
 function login() {
@@ -680,6 +699,7 @@ Q('#ssDedupeNow').addEventListener('click', function () {
 Q('#ssMissing').addEventListener('click', function () { copyMissing(detailId); });
 Q('#ssAllMissing').addEventListener('click', function () { copyMissing(null); });
 Q('#ssSync').addEventListener('click', function () { post('Sync', { mode: 'full' }).then(function () { toast('Sync started'); startPolling(8000); }, fail); });
+Q('#ssScan').addEventListener('click', function () { post('Sync', { mode: 'scan' }).then(function () { toast('Looking for new files; songs are matched again when it is done'); startPolling(8000); }, fail); });
 Q('#ssRematch').addEventListener('click', function () { post('Sync', { mode: 'rematch' }).then(function () { toast('Rematch started'); startPolling(8000); }, fail); });
 Q('#ssForm').addEventListener('submit', function (ev) { ev.preventDefault(); saveSettings().catch(fail); });
 Q('#ssCopyRedirect').addEventListener('click', function () { copy(Q('#ssRedirect').textContent, 'Redirect URI'); });
