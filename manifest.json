@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.6.0.0",
+        "changelog": "Scan library button: finds new, changed and removed files in the libraries chosen in Settings by file date and lets Jellyfin update only those folders, then matches again. Can also run by itself (every 15 min to daily).",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/Arkaizn/Spotify-to-jellyfin-plugin/releases/download/v1.6.0/spotisync_1.6.0.0.zip",
+        "checksum": "120dcf785b0c060b83798fb860291e01",
+        "timestamp": "2026-10-29T23:38:46Z"
+      },
+      {
         "version": "1.5.0.0",
         "changelog": "Pick an existing Jellyfin playlist for a sync (or create a new one); change the playlist a sync writes into from its detail view.",
         "targetAbi": "12.2.0.0",
